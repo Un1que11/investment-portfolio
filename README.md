@@ -14,8 +14,19 @@ allocation. See `CLAUDE.md` for the full spec and `BACKLOG.md` for the roadmap.
 | Crate | Path | Purpose |
 |---|---|---|
 | `portfolio-core` | `crates/core` | Domain models and calculations (pure, no I/O) |
+| `portfolio-db` | `crates/db` | SQLite storage: connection, migrations, decimal codec |
 | `portfolio-web` | `crates/web` | Axum web dashboard (binary `portfolio-web`) |
 | `portfolio-sync` | `crates/sync` | Background sync binary (`portfolio-sync`), run by launchd |
+
+## Database
+
+SQLite via sqlx. The schema lives in `migrations/` and is embedded into the binaries, which
+apply pending migrations on startup (`portfolio_db::open`). Money, quantities and rates are
+stored as exact decimal strings (`rust_decimal`), never as floats; the schema rejects anything
+else. Database files (`*.db`) are git-ignored.
+
+To add a migration, create `migrations/<YYYYMMDDHHMMSS>_<name>.sql`. Never edit a migration
+that has already been applied to a real database.
 
 ## Run
 
