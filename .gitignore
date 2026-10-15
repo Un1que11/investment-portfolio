@@ -1,0 +1,6 @@
+/target
+.env
+*.db
+*.sqlite*
+exports/
+.DS_Store
