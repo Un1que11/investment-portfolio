@@ -1,0 +1,12 @@
+[package]
+name = "portfolio-core"
+description = "Domain models and portfolio calculations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true
