@@ -87,6 +87,7 @@ async fn migrations_create_all_tables() {
         [
             "accounts",
             "assets",
+            "fx_rate_days",
             "fx_rates",
             "prices",
             "snapshots",

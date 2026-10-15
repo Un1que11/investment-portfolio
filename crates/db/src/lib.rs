@@ -2,6 +2,8 @@
 //!
 //! Schema lives in `migrations/` at the workspace root and is embedded at compile time.
 
+pub mod fx;
+
 use std::str::FromStr;
 
 use rust_decimal::Decimal;
