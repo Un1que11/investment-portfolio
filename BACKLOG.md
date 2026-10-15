@@ -2,7 +2,7 @@
 
 ## Фаза 1 — каркас
 - [x] P1. Cargo workspace: крейты `core` (модели и расчёты), `web` (Axum), `sync` (бинарь синхронизации). README с запуском.
-- [ ] P2. SQLite-схема и миграции: accounts, assets, transactions (buy/sell/deposit/fee/dividend), prices, fx_rates, snapshots. Decimal везде.
+- [x] P2. SQLite-схема и миграции: accounts, assets, transactions (buy/sell/deposit/fee/dividend), prices, fx_rates, snapshots. Decimal везде.
 - [ ] P3. [light] `config.toml`: целевые доли, лимиты IKZE по годам, ставка налога, коэффициент выкупа золота. Валидация: доли в сумме = 100%.
 - [ ] P4. [light] GitHub Actions: fmt + clippy + test на каждый PR.
 
