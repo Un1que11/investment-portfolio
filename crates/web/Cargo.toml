@@ -1,0 +1,19 @@
+[package]
+name = "portfolio-web"
+description = "Local Axum dashboard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+portfolio-core.workspace = true
+axum.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tower.workspace = true
+http-body-util.workspace = true
+
+[lints]
+workspace = true
