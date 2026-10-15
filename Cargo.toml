@@ -23,6 +23,7 @@ serde = { version = "1", features = ["derive"] }
 # arbitrary_precision keeps JSON numbers as their original text, so rates never pass through f64.
 serde_json = { version = "1", features = ["arbitrary_precision"] }
 wiremock = "0.6"
+dotenvy = "0.15"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
 
 [workspace.lints.rust]

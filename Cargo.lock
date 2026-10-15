@@ -1222,6 +1222,7 @@ name = "portfolio-sources"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dotenvy",
  "portfolio-core",
  "portfolio-db",
  "reqwest",

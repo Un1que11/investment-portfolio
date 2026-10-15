@@ -15,7 +15,7 @@ allocation. See `CLAUDE.md` for the full spec and `BACKLOG.md` for the roadmap.
 |---|---|---|
 | `portfolio-core` | `crates/core` | Domain models and calculations (pure, no I/O) |
 | `portfolio-db` | `crates/db` | SQLite storage: connection, migrations, decimal codec, caches |
-| `portfolio-sources` | `crates/sources` | External market data (read-only): NBP FX rates, ... |
+| `portfolio-sources` | `crates/sources` | External market data (read-only): NBP FX rates, VWCE prices |
 | `portfolio-web` | `crates/web` | Axum web dashboard (binary `portfolio-web`) |
 | `portfolio-sync` | `crates/sync` | Background sync binary (`portfolio-sync`), run by launchd |
 
@@ -35,6 +35,12 @@ that has already been applied to a real database.
   holiday the last table published before that day applies. Resolved past days are cached in
   `fx_rate_days`, so they need no network; today is re-checked until NBP publishes (around noon).
   Live check: `cargo run -p portfolio-sources --example fx_rate -- EUR 2026-10-11`
+- **VWCE:** daily closes in EUR from Alpha Vantage (`VWCE.DEX`, Xetra), cached in `prices`,
+  converted to PLN with the NBP rate of the close's trading day. Stooq, the original choice,
+  now puts its CSV downloads behind a JavaScript bot check. Needs a free key: copy
+  `.env.example` to `.env` and set `ALPHAVANTAGE_API_KEY`. The free tier allows ~25 requests a
+  day, so an instrument is refetched at most every 6 hours.
+  Live check: `cargo run -p portfolio-sources --example vwce_price -- 2026-10-09`
 
 ## Run
 
