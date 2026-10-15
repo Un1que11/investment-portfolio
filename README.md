@@ -15,7 +15,7 @@ allocation. See `CLAUDE.md` for the full spec and `BACKLOG.md` for the roadmap.
 |---|---|---|
 | `portfolio-core` | `crates/core` | Domain models and calculations (pure, no I/O) |
 | `portfolio-db` | `crates/db` | SQLite storage: connection, migrations, decimal codec, caches |
-| `portfolio-sources` | `crates/sources` | External market data (read-only): NBP FX rates, VWCE, BTC/ETH prices |
+| `portfolio-sources` | `crates/sources` | External market data (read-only): NBP FX rates and gold, VWCE, BTC/ETH prices |
 | `portfolio-web` | `crates/web` | Axum web dashboard (binary `portfolio-web`) |
 | `portfolio-sync` | `crates/sync` | Background sync binary (`portfolio-sync`), run by launchd |
 
@@ -46,6 +46,10 @@ that has already been applied to a real database.
   today's NBP rate. Daily closes: `OHLC` daily candles (UTC days; the unfinished day is
   skipped), cached in `prices`.
   Live check: `cargo run -p portfolio-sources --example crypto_prices -- 2026-10-11`
+- **Gold:** NBP price per gram of fine gold (PLN, business days), cached in `prices` as asset
+  `XAU_G`. A 1/10 oz coin (3.11 g) is valued at price x weight x buyback factor, or at a manual
+  dealer quote when one is entered.
+  Live check: `cargo run -p portfolio-sources --example gold_coin -- 2026-10-11 0.95`
 
 ## Run
 
