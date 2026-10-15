@@ -14,7 +14,8 @@ allocation. See `CLAUDE.md` for the full spec and `BACKLOG.md` for the roadmap.
 | Crate | Path | Purpose |
 |---|---|---|
 | `portfolio-core` | `crates/core` | Domain models and calculations (pure, no I/O) |
-| `portfolio-db` | `crates/db` | SQLite storage: connection, migrations, decimal codec |
+| `portfolio-db` | `crates/db` | SQLite storage: connection, migrations, decimal codec, caches |
+| `portfolio-sources` | `crates/sources` | External market data (read-only): NBP FX rates, ... |
 | `portfolio-web` | `crates/web` | Axum web dashboard (binary `portfolio-web`) |
 | `portfolio-sync` | `crates/sync` | Background sync binary (`portfolio-sync`), run by launchd |
 
@@ -27,6 +28,13 @@ else. Database files (`*.db`) are git-ignored.
 
 To add a migration, create `migrations/<YYYYMMDDHHMMSS>_<name>.sql`. Never edit a migration
 that has already been applied to a real database.
+
+## Market data
+
+- **FX rates:** NBP table A mid rates (PLN per unit), cached in `fx_rates`. For a weekend or
+  holiday the last table published before that day applies. Resolved past days are cached in
+  `fx_rate_days`, so they need no network; today is re-checked until NBP publishes (around noon).
+  Live check: `cargo run -p portfolio-sources --example fx_rate -- EUR 2026-10-11`
 
 ## Run
 
