@@ -3,8 +3,8 @@
 ## Фаза 1 — каркас
 - [ ] P1. Cargo workspace: крейты `core` (модели и расчёты), `web` (Axum), `sync` (бинарь синхронизации). README с запуском.
 - [ ] P2. SQLite-схема и миграции: accounts, assets, transactions (buy/sell/deposit/fee/dividend), prices, fx_rates, snapshots. Decimal везде.
-- [ ] P3. `config.toml`: целевые доли, лимиты IKZE по годам, ставка налога, коэффициент выкупа золота. Валидация: доли в сумме = 100%.
-- [ ] P4. GitHub Actions: fmt + clippy + test на каждый PR.
+- [ ] P3. [light] `config.toml`: целевые доли, лимиты IKZE по годам, ставка налога, коэффициент выкупа золота. Валидация: доли в сумме = 100%.
+- [ ] P4. [light] GitHub Actions: fmt + clippy + test на каждый PR.
 
 ## Фаза 2 — данные
 - [ ] P5. Курсы NBP (таблица A) с кешем в БД и обработкой выходных (берётся последний опубликованный курс).
