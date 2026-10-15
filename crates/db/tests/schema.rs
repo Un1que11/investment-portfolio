@@ -411,7 +411,7 @@ async fn currency_codes_must_be_upper_case_iso() {
 }
 
 #[tokio::test]
-async fn prices_accept_alphavantage_and_reject_unknown_sources() {
+async fn prices_accept_alphavantage_sources_and_reject_unknown_ones() {
     let pool = seeded().await;
     let insert = |source: &'static str, date: &'static str| {
         sqlx::query(
@@ -424,6 +424,7 @@ async fn prices_accept_alphavantage_and_reject_unknown_sources() {
     };
 
     insert("alphavantage", "2026-10-09").await.unwrap();
+    insert("alphavantage_weekly", "2026-10-02").await.unwrap();
     let err = insert("yahoo", "2026-10-12").await.unwrap_err();
     assert!(is_check_violation(&err), "{err}");
 }

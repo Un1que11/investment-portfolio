@@ -5,7 +5,8 @@ use portfolio_core::AssetClass;
 use portfolio_core::price::{DailyClose, PriceQuote};
 use portfolio_db::open_in_memory;
 use portfolio_db::prices::{
-    closes_between, ensure_asset, has_close_after, last_fetched_at, quote_for_date, upsert_closes,
+    closes_between, ensure_asset, has_close_after, insert_missing_closes, last_fetched_at,
+    quote_for_date, upsert_closes,
 };
 use rust_decimal::Decimal;
 
@@ -121,7 +122,10 @@ async fn has_close_after_and_last_fetched() {
     let id = ensure_asset(&pool, "VWCE", "Vanguard", AssetClass::Vwce, "EUR")
         .await
         .unwrap();
-    assert_eq!(last_fetched_at(&pool, id).await.unwrap(), None);
+    assert_eq!(
+        last_fetched_at(&pool, id, "alphavantage").await.unwrap(),
+        None
+    );
 
     upsert_closes(
         &pool,
@@ -137,7 +141,96 @@ async fn has_close_after_and_last_fetched() {
     assert!(has_close_after(&pool, id, d("2026-10-11")).await.unwrap());
     assert!(!has_close_after(&pool, id, d("2026-10-12")).await.unwrap());
     assert_eq!(
-        last_fetched_at(&pool, id).await.unwrap(),
+        last_fetched_at(&pool, id, "alphavantage").await.unwrap(),
         Some(at("2026-10-12T18:00:00Z"))
+    );
+}
+
+async fn sources(pool: &sqlx::SqlitePool, id: i64) -> Vec<(String, String, String)> {
+    sqlx::query_as("SELECT price_date, price, source FROM prices WHERE asset_id = ? ORDER BY 1")
+        .bind(id)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn insert_missing_closes_never_replaces_a_stored_close() {
+    let pool = open_in_memory().await.unwrap();
+    let id = ensure_asset(&pool, "VWCE", "Vanguard", AssetClass::Vwce, "EUR")
+        .await
+        .unwrap();
+    upsert_closes(
+        &pool,
+        id,
+        "EUR",
+        "alphavantage",
+        &[close("2026-10-09", "172.8600")],
+        at("2026-10-12T18:00:00Z"),
+    )
+    .await
+    .unwrap();
+
+    let inserted = insert_missing_closes(
+        &pool,
+        id,
+        "EUR",
+        "alphavantage_weekly",
+        &[
+            close("2026-10-02", "171.1400"),
+            close("2026-10-09", "999.00"),
+        ],
+        at("2026-10-15T09:00:00Z"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(inserted, 1);
+    let own = |a: &str, b: &str, c: &str| (a.to_owned(), b.to_owned(), c.to_owned());
+    assert_eq!(
+        sources(&pool, id).await,
+        [
+            own("2026-10-02", "171.1400", "alphavantage_weekly"),
+            own("2026-10-09", "172.8600", "alphavantage"),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn last_fetched_at_is_per_source() {
+    let pool = open_in_memory().await.unwrap();
+    let id = ensure_asset(&pool, "VWCE", "Vanguard", AssetClass::Vwce, "EUR")
+        .await
+        .unwrap();
+    upsert_closes(
+        &pool,
+        id,
+        "EUR",
+        "alphavantage",
+        &[close("2026-10-09", "172.8600")],
+        at("2026-10-12T18:00:00Z"),
+    )
+    .await
+    .unwrap();
+    insert_missing_closes(
+        &pool,
+        id,
+        "EUR",
+        "alphavantage_weekly",
+        &[close("2026-10-02", "171.1400")],
+        at("2026-10-15T09:00:00Z"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        last_fetched_at(&pool, id, "alphavantage").await.unwrap(),
+        Some(at("2026-10-12T18:00:00Z"))
+    );
+    assert_eq!(
+        last_fetched_at(&pool, id, "alphavantage_weekly")
+            .await
+            .unwrap(),
+        Some(at("2026-10-15T09:00:00Z"))
     );
 }

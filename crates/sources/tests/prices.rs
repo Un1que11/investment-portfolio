@@ -5,7 +5,10 @@ use portfolio_core::AssetClass;
 use portfolio_db::open_in_memory;
 use portfolio_sources::alphavantage::AlphaVantageClient;
 use portfolio_sources::nbp::NbpClient;
-use portfolio_sources::prices::{Clock, Instrument, PriceError, VWCE, close_on_day, value_in_pln};
+use portfolio_sources::prices::{
+    ALPHAVANTAGE_WEEKLY_SOURCE, BTC, Clock, Instrument, PriceError, VWCE, WeeklyBackfill,
+    backfill_weekly, close_on_day, value_in_pln,
+};
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 use wiremock::matchers::{method, path, query_param};
@@ -13,6 +16,11 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const IBM_DAILY: &str = include_str!("fixtures/alphavantage/daily_ibm_compact.json");
 const DEMO_INFO: &str = include_str!("fixtures/alphavantage/information_demo_key.json");
+// Real VWCE.DEX responses recorded with a free key on 2026-10-15, trimmed: daily 09-28..10-14,
+// weekly 08-28..10-14 (the last entry is the unfinished week) and the Christmas 2025 weeks.
+const VWCE_DAILY: &str = include_str!("fixtures/alphavantage/daily_vwce_tail.json");
+const VWCE_WEEKLY: &str = include_str!("fixtures/alphavantage/weekly_vwce_recent.json");
+const VWCE_WEEKLY_XMAS: &str = include_str!("fixtures/alphavantage/weekly_vwce_christmas.json");
 const USD_OCT: &str = include_str!("fixtures/nbp/usd_2026-09-25_2026-10-09.json");
 
 /// The recorded real series is IBM (the only symbol the demo key serves), quoted in USD.
@@ -24,6 +32,15 @@ const IBM: Instrument = Instrument {
     provider: "alphavantage",
     provider_symbol: "IBM",
 };
+
+/// Requests to the local mock are spaced by a short, measurable pause.
+const TEST_SPACING: std::time::Duration = std::time::Duration::from_millis(200);
+
+fn test_client(base_url: String) -> AlphaVantageClient {
+    AlphaVantageClient::new(base_url, "test-key")
+        .unwrap()
+        .with_request_spacing(TEST_SPACING)
+}
 
 fn d(s: &str) -> NaiveDate {
     NaiveDate::from_str(s).unwrap()
@@ -52,7 +69,7 @@ async fn setup() -> Setup {
     let server = MockServer::start().await;
     Setup {
         pool: open_in_memory().await.unwrap(),
-        av: AlphaVantageClient::new(server.uri(), "test-key").unwrap(),
+        av: test_client(server.uri()),
         nbp: NbpClient::with_base_url(server.uri()).unwrap(),
         server,
     }
@@ -265,4 +282,226 @@ fn vwce_is_the_xetra_listing_in_eur() {
         (VWCE.symbol, VWCE.currency, VWCE.provider_symbol),
         ("VWCE", "EUR", "VWCE.DEX")
     );
+}
+
+async fn serve_vwce(s: &Setup, function: &str, body: &str, times: u64) {
+    Mock::given(method("GET"))
+        .and(path("/query"))
+        .and(query_param("function", function))
+        .and(query_param("symbol", "VWCE.DEX"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(body))
+        .expect(times)
+        .mount(&s.server)
+        .await;
+}
+
+async fn stored(pool: &SqlitePool, from: &str, to: &str) -> Vec<(String, String, String)> {
+    sqlx::query_as(
+        "SELECT price_date, price, source FROM prices
+         WHERE price_date BETWEEN ? AND ? ORDER BY price_date",
+    )
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await
+    .unwrap()
+}
+
+fn row(date: &str, price: &str, source: &str) -> (String, String, String) {
+    (date.to_owned(), price.to_owned(), source.to_owned())
+}
+
+#[tokio::test]
+async fn backfill_stores_weekly_closes_only_where_no_daily_close_exists() {
+    let s = setup().await;
+    serve_vwce(&s, "TIME_SERIES_DAILY", VWCE_DAILY, 1).await;
+    serve_vwce(&s, "TIME_SERIES_WEEKLY", VWCE_WEEKLY, 1).await;
+
+    let done = backfill_weekly(&s.pool, &s.av, &VWCE, clock("2026-10-15T09:00:00Z"))
+        .await
+        .unwrap();
+
+    // 7 completed weeks (08-28..10-09); 10-02 and 10-09 already have daily closes.
+    assert_eq!(
+        done,
+        WeeklyBackfill {
+            weeks: 7,
+            inserted: 5
+        }
+    );
+    let weekly = ALPHAVANTAGE_WEEKLY_SOURCE;
+    assert_eq!(
+        stored(&s.pool, "2026-08-01", "2026-09-29").await,
+        [
+            row("2026-08-28", "168.5400", weekly),
+            row("2026-09-04", "167.8800", weekly),
+            row("2026-09-11", "166.8600", weekly),
+            row("2026-09-18", "167.1400", weekly),
+            row("2026-09-25", "169.7400", weekly),
+            row("2026-09-28", "169.1200", "alphavantage"),
+            row("2026-09-29", "169.4000", "alphavantage"),
+        ]
+    );
+    assert_eq!(
+        stored(&s.pool, "2026-10-09", "2026-10-09").await,
+        [row("2026-10-09", "172.8600", "alphavantage")]
+    );
+    // The unfinished week (Wednesday 10-14) keeps its daily close only.
+    assert_eq!(
+        stored(&s.pool, "2026-10-14", "2026-10-14").await,
+        [row("2026-10-14", "172.4800", "alphavantage")]
+    );
+}
+
+#[tokio::test]
+async fn days_in_backfilled_weeks_use_the_previous_week_end_close() {
+    let s = setup().await;
+    serve_vwce(&s, "TIME_SERIES_DAILY", VWCE_DAILY, 1).await;
+    serve_vwce(&s, "TIME_SERIES_WEEKLY", VWCE_WEEKLY, 1).await;
+    let clock = clock("2026-10-15T09:00:00Z");
+    backfill_weekly(&s.pool, &s.av, &VWCE, clock).await.unwrap();
+
+    for (day, close_date, close) in [
+        // A week-end itself: that day's close.
+        ("2026-09-11", "2026-09-11", "166.8600"),
+        // Wednesday and Thursday inside the next week: the last known close, 5 and 6 days back.
+        ("2026-09-16", "2026-09-11", "166.8600"),
+        ("2026-09-17", "2026-09-11", "166.8600"),
+        // Sunday before the daily window: Friday's week-end close.
+        ("2026-09-27", "2026-09-25", "169.7400"),
+        // Inside the daily window: the daily close as before.
+        ("2026-09-30", "2026-09-30", "169.7800"),
+    ] {
+        let quote = close_on_day(&s.pool, &s.av, &VWCE, d(day), clock)
+            .await
+            .unwrap();
+        assert_eq!(
+            (quote.date, quote.close, quote.currency.as_str()),
+            (d(close_date), dec(close), "EUR"),
+            "{day}"
+        );
+    }
+    // Before the first week-end there is nothing to fall back to. The daily series was just
+    // fetched, so this is not refetched (one request each, asserted by the mocks).
+    let err = close_on_day(&s.pool, &s.av, &VWCE, d("2026-08-27"), clock)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, PriceError::NoPrice("VWCE", _)), "{err}");
+}
+
+#[tokio::test]
+async fn holiday_week_ends_stay_within_the_gap_limit() {
+    let s = setup().await;
+    serve_vwce(&s, "TIME_SERIES_DAILY", VWCE_DAILY, 1).await;
+    serve_vwce(&s, "TIME_SERIES_WEEKLY", VWCE_WEEKLY_XMAS, 1).await;
+    let clock = clock("2026-10-15T09:00:00Z");
+    backfill_weekly(&s.pool, &s.av, &VWCE, clock).await.unwrap();
+
+    for (day, close_date, close) in [
+        // Weeks ending Tuesday 12-23 and 12-30 (Xetra closed 12-24..12-26 and 12-31).
+        ("2025-12-24", "2025-12-23", "144.7000"),
+        ("2025-12-29", "2025-12-23", "144.7000"),
+        ("2026-01-01", "2025-12-30", "145.4200"),
+        ("2026-01-08", "2026-01-02", "145.1400"),
+    ] {
+        let quote = close_on_day(&s.pool, &s.av, &VWCE, d(day), clock)
+            .await
+            .unwrap();
+        assert_eq!(
+            (quote.date, quote.close),
+            (d(close_date), dec(close)),
+            "{day}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn repeated_backfill_inserts_nothing_and_does_not_refetch_daily() {
+    let s = setup().await;
+    serve_vwce(&s, "TIME_SERIES_DAILY", VWCE_DAILY, 1).await;
+    serve_vwce(&s, "TIME_SERIES_WEEKLY", VWCE_WEEKLY, 2).await;
+
+    backfill_weekly(&s.pool, &s.av, &VWCE, clock("2026-10-15T09:00:00Z"))
+        .await
+        .unwrap();
+    let again = backfill_weekly(&s.pool, &s.av, &VWCE, clock("2026-10-15T10:00:00Z"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        again,
+        WeeklyBackfill {
+            weeks: 7,
+            inserted: 0
+        }
+    );
+}
+
+#[tokio::test]
+async fn weekly_rows_do_not_hold_back_the_daily_fetch() {
+    let s = setup().await;
+    serve_vwce(&s, "TIME_SERIES_DAILY", VWCE_DAILY, 1).await;
+    let id = portfolio_db::prices::ensure_asset(&s.pool, "VWCE", VWCE.name, VWCE.class, "EUR")
+        .await
+        .unwrap();
+    // Weekly closes written just now, but no daily series yet.
+    portfolio_db::prices::insert_missing_closes(
+        &s.pool,
+        id,
+        "EUR",
+        ALPHAVANTAGE_WEEKLY_SOURCE,
+        &[portfolio_core::price::DailyClose {
+            date: d("2026-09-25"),
+            close: dec("169.7400"),
+        }],
+        "2026-10-15T09:00:00Z".parse().unwrap(),
+    )
+    .await
+    .unwrap();
+
+    let quote = close_on_day(
+        &s.pool,
+        &s.av,
+        &VWCE,
+        d("2026-10-14"),
+        clock("2026-10-15T09:30:00Z"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        (quote.date, quote.close),
+        (d("2026-10-14"), dec("172.4800"))
+    );
+}
+
+#[tokio::test]
+async fn backfill_rejects_instruments_of_other_providers() {
+    let s = setup().await;
+
+    let err = backfill_weekly(&s.pool, &s.av, &BTC, clock("2026-10-15T09:00:00Z"))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        err,
+        PriceError::WrongProvider {
+            instrument: "BTC",
+            expected: "kraken",
+            got: "alphavantage"
+        }
+    ));
+}
+
+#[tokio::test]
+async fn weekly_notice_is_reported() {
+    let s = setup().await;
+    serve_vwce(&s, "TIME_SERIES_DAILY", VWCE_DAILY, 1).await;
+    serve_vwce(&s, "TIME_SERIES_WEEKLY", DEMO_INFO, 1).await;
+
+    let err = backfill_weekly(&s.pool, &s.av, &VWCE, clock("2026-10-15T09:00:00Z"))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, PriceError::Provider(_)), "{err}");
 }

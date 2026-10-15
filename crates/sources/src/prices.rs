@@ -11,6 +11,7 @@ use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 
 use crate::DailySource;
+use crate::alphavantage::{AlphaVantageClient, AlphaVantageError};
 use crate::fx::{FxError, rate_on_day};
 use crate::kraken::{KrakenClient, KrakenError};
 use crate::nbp::NbpClient;
@@ -120,6 +121,12 @@ impl From<KrakenError> for PriceError {
     }
 }
 
+impl From<AlphaVantageError> for PriceError {
+    fn from(e: AlphaVantageError) -> Self {
+        PriceError::Provider(Box::new(e))
+    }
+}
+
 impl From<FxError> for PriceError {
     fn from(e: FxError) -> Self {
         PriceError::Fx(e)
@@ -196,28 +203,103 @@ pub async fn close_on_day<S: DailySource>(
         return Ok(quote);
     }
 
-    let recently_fetched = cache::last_fetched_at(pool, asset_id)
-        .await?
-        .is_some_and(|t| clock.now - t < S::MIN_REFETCH_INTERVAL);
-    if !recently_fetched {
-        let closes = provider
-            .daily_closes(instrument.provider_symbol)
-            .await
-            .map_err(|e| PriceError::Provider(Box::new(e)))?;
-        cache::upsert_closes(
-            pool,
-            asset_id,
-            instrument.currency,
-            S::NAME,
-            &closes,
-            clock.now,
-        )
-        .await?;
-    }
-
+    refresh_daily(pool, provider, instrument, asset_id, clock).await?;
     cached_close(pool, asset_id, day)
         .await?
         .ok_or(PriceError::NoPrice(instrument.symbol, day))
+}
+
+/// Fetches and caches the provider's recent daily series unless it was fetched within the
+/// provider's `MIN_REFETCH_INTERVAL`.
+async fn refresh_daily<S: DailySource>(
+    pool: &SqlitePool,
+    provider: &S,
+    instrument: &Instrument,
+    asset_id: i64,
+    clock: Clock,
+) -> Result<(), PriceError> {
+    let recently_fetched = cache::last_fetched_at(pool, asset_id, S::NAME)
+        .await?
+        .is_some_and(|t| clock.now - t < S::MIN_REFETCH_INTERVAL);
+    if recently_fetched {
+        return Ok(());
+    }
+    let closes = provider
+        .daily_closes(instrument.provider_symbol)
+        .await
+        .map_err(|e| PriceError::Provider(Box::new(e)))?;
+    cache::upsert_closes(
+        pool,
+        asset_id,
+        instrument.currency,
+        S::NAME,
+        &closes,
+        clock.now,
+    )
+    .await?;
+    Ok(())
+}
+
+/// `prices.source` of week-end closes from Alpha Vantage's weekly series.
+pub const ALPHAVANTAGE_WEEKLY_SOURCE: &str = "alphavantage_weekly";
+
+/// What [`backfill_weekly`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WeeklyBackfill {
+    /// Completed weeks in the provider's weekly series.
+    pub weeks: usize,
+    /// Week-end closes stored for days that had no close yet.
+    pub inserted: u64,
+}
+
+/// Stores week-end closes for the instrument's whole history, so that [`close_on_day`] can
+/// answer days older than the free daily window (about 100 trading days).
+///
+/// The daily series is refreshed first (unless fetched recently), so every week-end inside the
+/// daily window already has its daily close; weekly closes only fill days without a stored
+/// close and never replace one. A later daily fetch does replace a weekly close for the same day.
+///
+/// A week-end close is the close of that week's last trading day, so for a day inside a
+/// backfilled week, [`close_on_day`] answers with the previous week-end's close (at most a week
+/// back, within `MAX_GAP_DAYS`). Costs two Alpha Vantage requests (one when the daily series
+/// is fresh).
+pub async fn backfill_weekly(
+    pool: &SqlitePool,
+    av: &AlphaVantageClient,
+    instrument: &Instrument,
+    clock: Clock,
+) -> Result<WeeklyBackfill, PriceError> {
+    if instrument.provider != AlphaVantageClient::NAME {
+        return Err(PriceError::WrongProvider {
+            instrument: instrument.symbol,
+            expected: instrument.provider,
+            got: AlphaVantageClient::NAME,
+        });
+    }
+    let asset_id = cache::ensure_asset(
+        pool,
+        instrument.symbol,
+        instrument.name,
+        instrument.class,
+        instrument.currency,
+    )
+    .await?;
+
+    refresh_daily(pool, av, instrument, asset_id, clock).await?;
+    let weekly = av.weekly_closes(instrument.provider_symbol, clock).await?;
+    let inserted = cache::insert_missing_closes(
+        pool,
+        asset_id,
+        instrument.currency,
+        ALPHAVANTAGE_WEEKLY_SOURCE,
+        &weekly,
+        clock.now,
+    )
+    .await?;
+    Ok(WeeklyBackfill {
+        weeks: weekly.len(),
+        inserted,
+    })
 }
 
 /// An instrument's close on a day, converted to PLN.
