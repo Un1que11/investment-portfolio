@@ -70,6 +70,13 @@ PORTFOLIO_ADDR=127.0.0.1:8080 cargo run -p portfolio-web
 
 Health check: `curl http://127.0.0.1:3000/health` returns `ok`.
 
+The database defaults to `portfolio.db` in the working directory; set `PORTFOLIO_DB_URL`
+(e.g. `sqlite:///Users/me/portfolio/portfolio.db`) to keep it elsewhere.
+
+Pages:
+- `/gold`: add, list and delete physical gold coins (purchase date, price in PLN, fine gold
+  weight, optional manual quote and label). Amounts may be typed with a decimal comma.
+
 ```bash
 cargo run -p portfolio-sync
 ```

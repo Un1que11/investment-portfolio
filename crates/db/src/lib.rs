@@ -3,6 +3,7 @@
 //! Schema lives in `migrations/` at the workspace root and is embedded at compile time.
 
 pub mod fx;
+pub mod gold;
 pub mod prices;
 
 use std::str::FromStr;

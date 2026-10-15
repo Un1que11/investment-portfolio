@@ -7,8 +7,14 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+askama.workspace = true
+axum = { workspace = true, features = ["form"] }
+chrono.workspace = true
 portfolio-core.workspace = true
-axum.workspace = true
+portfolio-db.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+sqlx.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]

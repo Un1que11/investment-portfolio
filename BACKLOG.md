@@ -12,7 +12,7 @@
 - [x] P7. BTC/ETH prices from the Kraken public Ticker.
 - [x] P27. VWCE history older than ~100 trading days: Alpha Vantage weekly closes (`TIME_SERIES_WEEKLY`) for dates outside the daily cache, without overwriting daily closes. Needed for XIRR (P14) and the benchmark (P19).
 - [x] P8. NBP gold price per gram; valuation of a 1/10 oz coin.
-- [ ] P9. Manual gold entry: a form to add a coin, a list, deletion.
+- [x] P9. Manual gold entry: a form to add a coin, a list, deletion.
 - [ ] P10. XTB xlsx import: parser for the operations and contributions history, idempotent by operation hash. Needs a sample export from Misha — until then, build the parser on a synthetic fixture and mark it `BLOCKED: need an anonymised sample`.
 - [ ] P11. Kraken private API (read-only): ledger and trades, incremental sync.
 
