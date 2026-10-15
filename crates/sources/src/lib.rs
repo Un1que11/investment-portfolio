@@ -5,6 +5,7 @@ use portfolio_core::price::DailyClose;
 
 pub mod alphavantage;
 pub mod fx;
+pub mod gold;
 pub mod kraken;
 pub mod nbp;
 pub mod prices;
