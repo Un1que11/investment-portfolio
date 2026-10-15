@@ -1,39 +1,38 @@
 # Backlog — Portfolio
 
-## Фаза 1 — каркас
-- [x] P1. Cargo workspace: крейты `core` (модели и расчёты), `web` (Axum), `sync` (бинарь синхронизации). README с запуском.
-- [x] P2. SQLite-схема и миграции: accounts, assets, transactions (buy/sell/deposit/fee/dividend), prices, fx_rates, snapshots. Decimal везде.
-- [ ] P3. [light] `config.toml`: целевые доли, лимиты IKZE по годам, ставка налога, коэффициент выкупа золота. Валидация: доли в сумме = 100%.
-- [ ] P4. [light] GitHub Actions: fmt + clippy + test на каждый PR.
+## Phase 1 — skeleton
+- [x] P1. Cargo workspace: crates `core` (models and calculations), `web` (Axum), `sync` (sync binary). README with how to run.
+- [x] P2. SQLite schema and migrations: accounts, assets, transactions (buy/sell/deposit/fee/dividend), prices, fx_rates, snapshots. Decimal everywhere.
+- [ ] P3. [light] `config.toml`: target shares, IKZE limits per year, tax rate, gold buyback factor. Validation: shares add up to 100%.
+- [ ] P4. [light] GitHub Actions: fmt + clippy + test on every PR.
 
-## Фаза 2 — данные
-- [x] P5. Курсы NBP (таблица A) с кешем в БД и обработкой выходных (берётся последний опубликованный курс).
-- [x] P6. Цена VWCE (Stooq, EUR) с кешем; конвертация в PLN по курсу NBP.
-- [x] P7. Цены BTC/ETH из Kraken public Ticker.
-- [x] P27. История VWCE старше ~100 торговых дней: недельные закрытия Alpha Vantage (`TIME_SERIES_WEEKLY`) для дат вне дневного кеша, без перезаписи дневных. Нужно для XIRR (P14) и бенчмарка (P19).
-- [ ] P8. Цена золота NBP за грамм; оценка монеты 1/10 oz.
-- [x] P8. Цена золота NBP за грамм; оценка монеты 1/10 oz.
-- [ ] P9. Ручной ввод золота: форма добавления монеты, список, удаление.
-- [ ] P10. Импорт XTB xlsx: парсер истории операций и взносов, идемпотентность по хешу операции. Нужен образец экспорта от Миши — до этого сделать парсер на синтетической фикстуре и пометить `BLOCKED: нужен обезличенный образец`.
-- [ ] P11. Kraken private API (read-only): ledger и сделки, инкрементальная синхронизация.
+## Phase 2 — data
+- [x] P5. NBP exchange rates (table A) with a DB cache and weekend handling (the last published rate is used).
+- [x] P6. VWCE price (Stooq, EUR) with a cache; conversion to PLN at the NBP rate.
+- [x] P7. BTC/ETH prices from the Kraken public Ticker.
+- [x] P27. VWCE history older than ~100 trading days: Alpha Vantage weekly closes (`TIME_SERIES_WEEKLY`) for dates outside the daily cache, without overwriting daily closes. Needed for XIRR (P14) and the benchmark (P19).
+- [x] P8. NBP gold price per gram; valuation of a 1/10 oz coin.
+- [ ] P9. Manual gold entry: a form to add a coin, a list, deletion.
+- [ ] P10. XTB xlsx import: parser for the operations and contributions history, idempotent by operation hash. Needs a sample export from Misha — until then, build the parser on a synthetic fixture and mark it `BLOCKED: need an anonymised sample`.
+- [ ] P11. Kraken private API (read-only): ledger and trades, incremental sync.
 
-## Фаза 3 — расчёты (всё в `core`, всё с тестами)
-- [ ] P12. Позиции и стоимость на дату; чистые взносы.
-- [ ] P13. P&L абсолютный и % по активу и портфелю.
-- [ ] P14. XIRR по портфелю и активам.
-- [ ] P15. Вклад актива в общую прибыль и рейтинг.
-- [ ] P16. Отклонение от цели (п.п. и PLN), включая разбивку BTC/ETH внутри крипты.
-- [ ] P17. Калькулятор докупки: сумма N → план покупок без продаж.
-- [ ] P18. IKZE: взносы за год, остаток лимита, оценка вычета.
-- [ ] P19. Бенчмарк «всё в VWCE».
+## Phase 3 — calculations (all in `core`, all with tests)
+- [ ] P12. Positions and value on a date; net contributions.
+- [ ] P13. P&L absolute and in % per asset and for the portfolio.
+- [ ] P14. XIRR for the portfolio and per asset.
+- [ ] P15. Each asset's contribution to the total profit, and a ranking.
+- [ ] P16. Deviation from target (pp and PLN), including the BTC/ETH split within crypto.
+- [ ] P17. Top-up calculator: amount N → a purchase plan without selling.
+- [ ] P18. IKZE: contributions this year, remaining limit, estimated deduction.
+- [ ] P19. Benchmark "everything in VWCE".
 
-## Фаза 4 — интерфейс
-- [ ] P20. Главная: итог, P&L, XIRR, график стоимости vs взносов.
-- [ ] P21. Карточки активов с рейтингом «больше / меньше принёс».
-- [ ] P22. Блок распределения: факт vs цель, отклонения, калькулятор докупки.
-- [ ] P23. Блок IKZE с прогресс-баром лимита и напоминанием в декабре.
-- [ ] P24. Страница импорта XTB.
+## Phase 4 — interface
+- [ ] P20. Home page: total, P&L, XIRR, chart of value vs contributions.
+- [ ] P21. Asset cards with the "earned more / less" ranking.
+- [ ] P22. Allocation block: actual vs target, deviations, top-up calculator.
+- [ ] P23. IKZE block with a limit progress bar and a reminder in December.
+- [ ] P24. XTB import page.
 
-## Фаза 5 — автоматизация
-- [ ] P25. `portfolio-sync`: ежедневный снапшот цен и стоимости; plist для launchd + инструкция установки.
-- [ ] P26. Опционально: месячная сводка в Telegram (тот же бот, что у F1-дайджеста).
+## Phase 5 — automation
+- [ ] P25. `portfolio-sync`: daily snapshot of prices and value; launchd plist + installation instructions.
+- [ ] P26. Optional: monthly summary in Telegram (the same bot as the F1 digest).
