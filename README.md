@@ -88,6 +88,19 @@ newer than the last one) and mapped into transactions: EUR deposits (also card p
 (net of Kraken's commission), fees as separate rows. Bundle dissolves are internal moves and are
 skipped. Entry types not supported yet are kept raw and listed by the sync.
 
+## Portfolio report
+
+Holdings, net contributions and value in PLN on a date, from everything imported and synced:
+
+```bash
+cargo run -p portfolio-sources --example portfolio -- 2026-10-14 0.95
+```
+
+(arguments: date, default today; gold buyback factor, default 1 until `config.toml`). Net
+contributions are money put in from outside, at the NBP rate of each flow's date: deposits minus
+withdrawals for XTB and Kraken, coin purchases for gold. Value is every position at that day's
+price plus the cash left in each account; positions without a price are listed, not guessed.
+
 ## Run
 
 ```bash

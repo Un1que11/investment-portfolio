@@ -11,6 +11,7 @@ pub mod kraken_ledger;
 pub mod kraken_private;
 pub mod nbp;
 pub mod prices;
+pub mod valuation;
 
 /// A provider of daily closing prices, used by the cached lookup in [`prices`].
 pub trait DailySource {

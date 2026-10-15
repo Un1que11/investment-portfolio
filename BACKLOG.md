@@ -17,7 +17,7 @@
 - [x] P11. Kraken private API (read-only): ledger and trades, incremental sync.
 
 ## Phase 3 — calculations (all in `core`, all with tests)
-- [ ] P12. Positions and value on a date; net contributions.
+- [x] P12. Positions and value on a date; net contributions.
 - [ ] P13. P&L absolute and in % per asset and for the portfolio.
 - [ ] P14. XIRR for the portfolio and per asset.
 - [ ] P15. Each asset's contribution to the total profit, and a ranking.

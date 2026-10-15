@@ -4,6 +4,7 @@
 
 pub mod fx;
 pub mod gold;
+pub mod portfolio;
 pub mod price;
 
 use std::fmt;
