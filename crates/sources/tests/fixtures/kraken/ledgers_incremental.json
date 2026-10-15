@@ -1,0 +1,19 @@
+{
+ "error": [],
+ "result": {
+  "ledger": {
+   "LAAAAA-AAAAA-AAAA19": {
+    "aclass": "currency",
+    "amount": "50.0000",
+    "asset": "ZEUR",
+    "balance": "412.0500",
+    "fee": "0.0000",
+    "refid": "RAAAAA-AAAAA-AAAA11",
+    "time": 1768003200.0,
+    "type": "deposit",
+    "subtype": ""
+   }
+  },
+  "count": 1
+ }
+}

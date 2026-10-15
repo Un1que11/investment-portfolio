@@ -1,0 +1,96 @@
+{
+ "error": [],
+ "result": {
+  "ledger": {
+   "LAAAAA-AAAAA-AAAAA8": {
+    "aclass": "currency",
+    "amount": "-60.0000",
+    "asset": "ZEUR",
+    "balance": "362.0500",
+    "fee": "0.9000",
+    "refid": "RAAAAA-AAAAA-AAAAA4",
+    "time": 1767484800.4,
+    "type": "spend",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAAA7": {
+    "aclass": "currency",
+    "amount": "0.0010000000",
+    "asset": "XXBT",
+    "balance": "0.0050000000",
+    "fee": "0.0000000000",
+    "refid": "RAAAAA-AAAAA-AAAAA4",
+    "time": 1767484800.3,
+    "type": "receive",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAAA6": {
+    "aclass": "currency",
+    "amount": "-120.0000",
+    "asset": "ZEUR",
+    "balance": "422.9500",
+    "fee": "1.8000",
+    "refid": "RAAAAA-AAAAA-AAAAA4",
+    "time": 1767484800.2,
+    "type": "spend",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAAA5": {
+    "aclass": "currency",
+    "amount": "0.0500000000",
+    "asset": "XETH",
+    "balance": "0.0500000000",
+    "fee": "0.0000000000",
+    "refid": "RAAAAA-AAAAA-AAAAA4",
+    "time": 1767484800.1,
+    "type": "receive",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAAA4": {
+    "aclass": "currency",
+    "amount": "0.0040000000",
+    "asset": "XXBT",
+    "balance": "0.0040000000",
+    "fee": "0.0000000000",
+    "refid": "RAAAAA-AAAAA-AAAAA3",
+    "time": 1767398400.6,
+    "type": "receive",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAAA3": {
+    "aclass": "currency",
+    "amount": "-250.0000",
+    "asset": "ZEUR",
+    "balance": "544.7500",
+    "fee": "3.7500",
+    "refid": "RAAAAA-AAAAA-AAAAA3",
+    "time": 1767398400.5,
+    "type": "spend",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAAA2": {
+    "aclass": "currency",
+    "amount": "300.0000",
+    "asset": "ZEUR",
+    "balance": "798.5000",
+    "fee": "1.5000",
+    "refid": "RAAAAA-AAAAA-AAAAA2",
+    "time": 1767312000.5,
+    "type": "deposit",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAAA1": {
+    "aclass": "currency",
+    "amount": "500.0000",
+    "asset": "ZEUR",
+    "balance": "500.0000",
+    "fee": "0.0000",
+    "refid": "RAAAAA-AAAAA-AAAAA1",
+    "time": 1767225600.1234,
+    "type": "deposit",
+    "subtype": ""
+   }
+  },
+  "count": 18
+ }
+}

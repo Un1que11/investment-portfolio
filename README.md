@@ -72,6 +72,22 @@ Operation types not supported yet (e.g. fees, taxes, sales) make the import fail
 names rather than be skipped silently. To turn a new export into a test fixture, anonymise it
 with `tools/anonymise_xtb_export.py` and check the result before committing it.
 
+## Kraken sync
+
+Read-only sync of the Kraken account via the private API (`Balance` and `Ledgers` only; the
+client has no trading or withdrawal calls). Create a key with **query** permissions only and put
+it in `.env` as `KRAKEN_API_KEY` and `KRAKEN_PRIVATE_KEY` (see `.env.example`). Then:
+
+```bash
+cargo run -p portfolio-sources --example kraken_sync
+```
+
+Ledger entries are stored raw in `kraken_ledger` (incremental: each run fetches only entries
+newer than the last one) and mapped into transactions: EUR deposits (also card purchases held as
+`EUR.HOLD`), instant Buy (`spend` + `receive`) as buys, ETH staking rewards as income in kind
+(net of Kraken's commission), fees as separate rows. Bundle dissolves are internal moves and are
+skipped. Entry types not supported yet are kept raw and listed by the sync.
+
 ## Run
 
 ```bash

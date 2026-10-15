@@ -7,6 +7,8 @@ pub mod alphavantage;
 pub mod fx;
 pub mod gold;
 pub mod kraken;
+pub mod kraken_ledger;
+pub mod kraken_private;
 pub mod nbp;
 pub mod prices;
 

@@ -14,7 +14,7 @@
 - [x] P8. NBP gold price per gram; valuation of a 1/10 oz coin.
 - [x] P9. Manual gold entry: a form to add a coin, a list, deletion.
 - [x] P10. XTB xlsx import: parser for the operations and contributions history, idempotent by operation hash. Needs a sample export from Misha — until then, build the parser on a synthetic fixture and mark it `BLOCKED: need an anonymised sample`.
-- [ ] P11. Kraken private API (read-only): ledger and trades, incremental sync.
+- [x] P11. Kraken private API (read-only): ledger and trades, incremental sync.
 
 ## Phase 3 — calculations (all in `core`, all with tests)
 - [ ] P12. Positions and value on a date; net contributions.
