@@ -15,6 +15,7 @@ allocation. See `CLAUDE.md` for the full spec and `BACKLOG.md` for the roadmap.
 |---|---|---|
 | `portfolio-core` | `crates/core` | Domain models and calculations (pure, no I/O) |
 | `portfolio-db` | `crates/db` | SQLite storage: connection, migrations, decimal codec, caches |
+| `portfolio-xtb` | `crates/xtb` | XTB xStation export (xlsx) parser and idempotent import |
 | `portfolio-sources` | `crates/sources` | External market data (read-only): NBP FX rates and gold, VWCE, BTC/ETH prices |
 | `portfolio-web` | `crates/web` | Axum web dashboard (binary `portfolio-web`) |
 | `portfolio-sync` | `crates/sync` | Background sync binary (`portfolio-sync`), run by launchd |
@@ -55,6 +56,21 @@ that has already been applied to a real database.
   `XAU_G`. A 1/10 oz coin (3.11 g) is valued at price x weight x buyback factor, or at a manual
   dealer quote when one is entered.
   Live check: `cargo run -p portfolio-sources --example gold_coin -- 2026-10-11 0.95`
+
+## XTB import
+
+XTB has no API since 14.03.2025; the account history export from xStation (History → export
+to Excel) is the source. Import it into the local database:
+
+```bash
+cargo run -p portfolio-xtb --example import -- ~/Downloads/IKZE_....xlsx
+```
+
+Re-importing the same or an overlapping export is safe: operations already imported are
+skipped (identified by a hash of their contents, since the export has no per-operation id).
+Operation types not supported yet (e.g. fees, taxes, sales) make the import fail with their
+names rather than be skipped silently. To turn a new export into a test fixture, anonymise it
+with `tools/anonymise_xtb_export.py` and check the result before committing it.
 
 ## Run
 

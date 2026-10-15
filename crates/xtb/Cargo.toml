@@ -1,0 +1,22 @@
+[package]
+name = "portfolio-xtb"
+description = "XTB xStation account-history export (xlsx) parser and idempotent import"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+calamine.workspace = true
+chrono.workspace = true
+portfolio-db.workspace = true
+rust_decimal.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+
+[dev-dependencies]
+rust_xlsxwriter.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
