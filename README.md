@@ -39,8 +39,13 @@ that has already been applied to a real database.
   converted to PLN with the NBP rate of the close's trading day. Stooq, the original choice,
   now puts its CSV downloads behind a JavaScript bot check. Needs a free key: copy
   `.env.example` to `.env` and set `ALPHAVANTAGE_API_KEY`. The free tier allows ~25 requests a
-  day, so an instrument is refetched at most every 6 hours.
+  day, so an instrument is refetched at most every 6 hours, and rejects quick bursts, so the
+  client waits 5 s between requests.
   Live check: `cargo run -p portfolio-sources --example vwce_price -- 2026-10-09`
+  Older history: free daily output covers only ~100 trading days, so `backfill_weekly` stores
+  week-end closes from `TIME_SERIES_WEEKLY` (source `alphavantage_weekly`, back to 2019-08)
+  for days without a daily close. A day inside a backfilled week uses the previous week-end's
+  close. Live check: `cargo run -p portfolio-sources --example vwce_backfill -- 2024-03-13`
 - **BTC / ETH:** Kraken public API, no key. Kraken has no PLN markets, so prices are taken in
   EUR (`XXBTZEUR`, `XETHZEUR`) and converted with NBP. Live value: `Ticker` last trade with
   today's NBP rate. Daily closes: `OHLC` daily candles (UTC days; the unfinished day is

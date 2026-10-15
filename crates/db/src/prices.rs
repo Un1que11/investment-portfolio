@@ -74,6 +74,40 @@ pub async fn upsert_closes(
     tx.commit().await
 }
 
+/// Inserts closes for days that have no stored close yet and leaves existing rows untouched
+/// (used for lower-quality backfills that must never replace a daily close). Returns how many
+/// rows were inserted.
+pub async fn insert_missing_closes(
+    pool: &SqlitePool,
+    asset_id: i64,
+    currency: &str,
+    source: &str,
+    closes: &[DailyClose],
+    fetched_at: DateTime<Utc>,
+) -> Result<u64, sqlx::Error> {
+    let fetched_at = fetched_at.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let mut inserted = 0;
+    let mut tx = pool.begin().await?;
+    for c in closes {
+        inserted += sqlx::query(
+            "INSERT INTO prices (asset_id, price_date, price, currency, source, fetched_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT (asset_id, price_date) DO NOTHING",
+        )
+        .bind(asset_id)
+        .bind(date_text(c.date))
+        .bind(DbDecimal(c.close))
+        .bind(currency)
+        .bind(source)
+        .bind(&fetched_at)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    }
+    tx.commit().await?;
+    Ok(inserted)
+}
+
 /// Stored closes for the asset with `from <= date <= to`, oldest first.
 pub async fn closes_between(
     pool: &SqlitePool,
@@ -134,14 +168,17 @@ pub async fn has_close_after(
         .await
 }
 
-/// When closes for the asset were last written, if ever.
+/// When closes for the asset from `source` were last written, if ever. Per source, so that a
+/// backfill from another endpoint does not hold back the next fetch of recent closes.
 pub async fn last_fetched_at(
     pool: &SqlitePool,
     asset_id: i64,
+    source: &str,
 ) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
     let latest: Option<String> =
-        sqlx::query_scalar("SELECT max(fetched_at) FROM prices WHERE asset_id = ?")
+        sqlx::query_scalar("SELECT max(fetched_at) FROM prices WHERE asset_id = ? AND source = ?")
             .bind(asset_id)
+            .bind(source)
             .fetch_one(pool)
             .await?;
     latest
