@@ -409,3 +409,71 @@ async fn currency_codes_must_be_upper_case_iso() {
         assert!(is_check_violation(&err), "{bad}: {err}");
     }
 }
+
+#[tokio::test]
+async fn prices_accept_alphavantage_and_reject_unknown_sources() {
+    let pool = seeded().await;
+    let insert = |source: &'static str, date: &'static str| {
+        sqlx::query(
+            "INSERT INTO prices (asset_id, price_date, price, currency, source)
+             VALUES (1, ?, '170.12', 'EUR', ?)",
+        )
+        .bind(date)
+        .bind(source)
+        .execute(&pool)
+    };
+
+    insert("alphavantage", "2026-10-09").await.unwrap();
+    let err = insert("yahoo", "2026-10-12").await.unwrap_err();
+    assert!(is_check_violation(&err), "{err}");
+}
+
+#[tokio::test]
+async fn prices_rebuild_migration_keeps_existing_rows() {
+    // Apply only the first two migrations, store a price, then apply the rest.
+    let options = sqlx::sqlite::SqliteConnectOptions::from_str("sqlite::memory:")
+        .unwrap()
+        .foreign_keys(true);
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap();
+    let first_two = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(MIGRATOR.iter().take(2).cloned().collect()),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    first_two.run(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO assets (id, symbol, name, asset_class, currency)
+         VALUES (1, 'VWCE', 'Vanguard FTSE All-World', 'vwce', 'EUR')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO prices (asset_id, price_date, price, currency, source, fetched_at)
+         VALUES (1, '2026-10-01', '168.4000', 'EUR', 'stooq', '2026-10-01T18:00:00Z')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    MIGRATOR.run(&pool).await.unwrap();
+
+    let row: (String, DbDecimal, String, String) = sqlx::query_as(
+        "SELECT price_date, price, source, fetched_at FROM prices WHERE asset_id = 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        row,
+        (
+            "2026-10-01".to_owned(),
+            dec("168.4000"),
+            "stooq".to_owned(),
+            "2026-10-01T18:00:00Z".to_owned()
+        )
+    );
+}

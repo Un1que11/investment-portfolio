@@ -3,6 +3,7 @@
 //! This crate has no I/O: everything here is pure and unit-tested.
 
 pub mod fx;
+pub mod price;
 
 use std::fmt;
 use std::str::FromStr;
