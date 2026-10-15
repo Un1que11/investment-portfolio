@@ -21,6 +21,7 @@ const IBM: Instrument = Instrument {
     name: "IBM",
     class: AssetClass::Vwce,
     currency: "USD",
+    provider: "alphavantage",
     provider_symbol: "IBM",
 };
 

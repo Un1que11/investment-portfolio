@@ -8,10 +8,12 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::time::Duration;
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, TimeDelta};
 use portfolio_core::price::DailyClose;
 use rust_decimal::Decimal;
 use serde::Deserialize;
+
+use crate::DailySource;
 
 pub const DEFAULT_BASE_URL: &str = "https://www.alphavantage.co";
 pub const API_KEY_ENV: &str = "ALPHAVANTAGE_API_KEY";
@@ -171,5 +173,19 @@ impl AlphaVantageClient {
             return Err(AlphaVantageError::Status(status.as_u16()));
         }
         parse_daily(&response.text().await?, symbol)
+    }
+}
+
+impl DailySource for AlphaVantageClient {
+    const NAME: &'static str = "alphavantage";
+    // The free tier allows ~25 requests a day.
+    const MIN_REFETCH_INTERVAL: TimeDelta = TimeDelta::hours(6);
+    type Error = AlphaVantageError;
+
+    fn daily_closes(
+        &self,
+        symbol: &str,
+    ) -> impl Future<Output = Result<Vec<DailyClose>, AlphaVantageError>> + Send {
+        AlphaVantageClient::daily_closes(self, symbol)
     }
 }
