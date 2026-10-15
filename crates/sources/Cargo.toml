@@ -21,6 +21,8 @@ sqlx.workspace = true
 tokio = { workspace = true, features = ["sync", "time"] }
 
 [dev-dependencies]
+portfolio-xtb.workspace = true
+rust_decimal_macros.workspace = true
 dotenvy.workspace = true
 tokio.workspace = true
 wiremock.workspace = true

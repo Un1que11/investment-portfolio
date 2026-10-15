@@ -104,3 +104,53 @@ pub async fn insert_transactions(
     tx.commit().await?;
     Ok(written)
 }
+
+/// Every transaction, oldest first, in the shape the portfolio calculations use.
+pub async fn load_ledger(
+    pool: &SqlitePool,
+) -> Result<Vec<portfolio_core::portfolio::LedgerTx>, sqlx::Error> {
+    use portfolio_core::portfolio::{AccountKind, LedgerTx, TxKind};
+    type Row = (
+        String,
+        String,
+        String,
+        Option<String>,
+        String,
+        Option<DbDecimal>,
+        DbDecimal,
+        String,
+    );
+    let rows: Vec<Row> = sqlx::query_as(
+        "SELECT t.executed_at, a.name, a.kind, s.symbol, t.kind, t.quantity, t.amount, t.currency
+         FROM transactions t
+         JOIN accounts a ON a.id = t.account_id
+         LEFT JOIN assets s ON s.id = t.asset_id
+         ORDER BY t.executed_at, t.id",
+    )
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(
+            |(at, account, account_kind, asset, kind, quantity, amount, currency)| {
+                let decode = |msg: String| sqlx::Error::Decode(msg.into());
+                let date = NaiveDateTime::parse_from_str(&at, "%Y-%m-%dT%H:%M:%SZ")
+                    .map_err(|e| decode(format!("executed_at {at:?}: {e}")))?
+                    .date();
+                Ok(LedgerTx {
+                    date,
+                    account,
+                    account_kind: if account_kind == "manual" {
+                        AccountKind::Manual
+                    } else {
+                        AccountKind::Funded
+                    },
+                    kind: TxKind::parse(&kind).ok_or_else(|| decode(format!("kind {kind:?}")))?,
+                    asset,
+                    quantity: quantity.map(|q| q.0),
+                    amount: amount.0,
+                    currency,
+                })
+            },
+        )
+        .collect()
+}
