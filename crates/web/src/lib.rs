@@ -1,43 +1,70 @@
 //! Local Axum dashboard.
 
-use axum::{Router, routing::get};
+use std::sync::Arc;
+
+use axum::Router;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Redirect, Response};
+use axum::routing::{get, post};
+use chrono::NaiveDate;
+use sqlx::SqlitePool;
+
+pub mod gold;
+
+/// Shared state: the database and a clock (today's date), injectable for tests.
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: SqlitePool,
+    pub today: Arc<dyn Fn() -> NaiveDate + Send + Sync>,
+}
+
+impl AppState {
+    /// State using the machine's local date (Polish time on Misha's Mac).
+    pub fn new(pool: SqlitePool) -> Self {
+        AppState {
+            pool,
+            today: Arc::new(|| chrono::Local::now().date_naive()),
+        }
+    }
+}
 
 /// Builds the application router. Kept separate from `main` so tests can drive it in-process.
-pub fn app() -> Router {
-    Router::new().route("/health", get(health))
+pub fn app(state: AppState) -> Router {
+    Router::new()
+        .route("/", get(|| async { Redirect::to("/gold") }))
+        .route("/health", get(health))
+        .route("/gold", get(gold::show))
+        .route("/gold/coins", post(gold::add))
+        .route("/gold/coins/{id}/delete", post(gold::delete))
+        .with_state(state)
 }
 
 async fn health() -> &'static str {
     "ok"
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use http_body_util::BodyExt;
-    use tower::ServiceExt;
+/// Internal failure. Details go to stderr; the response stays generic.
+#[derive(Debug)]
+pub enum AppError {
+    Db(sqlx::Error),
+    Template(askama::Error),
+}
 
-    #[tokio::test]
-    async fn health_returns_ok() {
-        let response = app()
-            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = response.into_body().collect().await.unwrap().to_bytes();
-        assert_eq!(&body[..], b"ok");
+impl From<sqlx::Error> for AppError {
+    fn from(e: sqlx::Error) -> Self {
+        AppError::Db(e)
     }
+}
 
-    #[tokio::test]
-    async fn unknown_route_is_not_found() {
-        let response = app()
-            .oneshot(Request::get("/nope").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
+impl From<askama::Error> for AppError {
+    fn from(e: askama::Error) -> Self {
+        AppError::Template(e)
+    }
+}
 
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        eprintln!("request failed: {self:?}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
     }
 }

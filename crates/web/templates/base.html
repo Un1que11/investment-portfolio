@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Portfolio{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ddd; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    form.add { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .6rem; align-items: end; }
+    label { display: flex; flex-direction: column; font-size: .85rem; gap: .2rem; }
+    .error { color: #b00020; font-size: .8rem; }
+    .muted { color: #777; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">Portfolio</a> · <a href="/gold">Gold</a></nav>
+  {% block content %}{% endblock %}
+</body>
+</html>

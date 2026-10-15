@@ -1,0 +1,54 @@
+<section id="gold-panel">
+  <form class="add" method="post" action="/gold/coins" hx-post="/gold/coins" hx-target="#gold-panel" hx-swap="outerHTML">
+    <label>Purchased on
+      <input type="date" name="purchased_on" value="{{ form.purchased_on }}" required>
+      {% if let Some(e) = errors.purchased_on %}<span class="error">{{ e }}</span>{% endif %}
+    </label>
+    <label>Price (PLN)
+      <input name="purchase_price" inputmode="decimal" value="{{ form.purchase_price }}" required>
+      {% if let Some(e) = errors.purchase_price %}<span class="error">{{ e }}</span>{% endif %}
+    </label>
+    <label>Fine gold (g)
+      <input name="fine_weight" inputmode="decimal" value="{{ form.fine_weight }}" required>
+      {% if let Some(e) = errors.fine_weight %}<span class="error">{{ e }}</span>{% endif %}
+    </label>
+    <label>Manual quote (PLN, optional)
+      <input name="manual_quote" inputmode="decimal" value="{{ form.manual_quote }}">
+      {% if let Some(e) = errors.manual_quote %}<span class="error">{{ e }}</span>{% endif %}
+    </label>
+    <label>Label (optional)
+      <input name="label" maxlength="100" value="{{ form.label }}">
+      {% if let Some(e) = errors.label %}<span class="error">{{ e }}</span>{% endif %}
+    </label>
+    <button type="submit">Add coin</button>
+  </form>
+
+  {% if coins.is_empty() %}
+  <p class="muted">No coins yet.</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr><th>Purchased</th><th>Label</th><th class="num">Price (PLN)</th><th class="num">Fine gold (g)</th><th class="num">Manual quote</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for coin in coins %}
+      <tr id="coin-{{ coin.id }}">
+        <td>{{ coin.purchased_on }}</td>
+        <td>{{ coin.label }}</td>
+        <td class="num">{{ coin.purchase_price }}</td>
+        <td class="num">{{ coin.fine_weight }}</td>
+        <td class="num">{{ coin.manual_quote }}</td>
+        <td>
+          <form method="post" action="/gold/coins/{{ coin.id }}/delete" hx-post="/gold/coins/{{ coin.id }}/delete" hx-target="#gold-panel" hx-swap="outerHTML" hx-confirm="Delete this coin?">
+            <button type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr><th colspan="2">{{ coins.len() }} coin(s)</th><th class="num">{{ total_price }}</th><th class="num">{{ total_weight }}</th><th colspan="2"></th></tr>
+    </tfoot>
+  </table>
+  {% endif %}
+</section>
