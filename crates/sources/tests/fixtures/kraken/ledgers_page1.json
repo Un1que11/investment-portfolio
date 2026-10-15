@@ -1,0 +1,118 @@
+{
+ "error": [],
+ "result": {
+  "ledger": {
+   "LAAAAA-AAAAA-AAAA18": {
+    "aclass": "currency",
+    "amount": "-0.0005000000",
+    "asset": "XXBT",
+    "balance": "0.0044900000",
+    "fee": "0.0000100000",
+    "refid": "RAAAAA-AAAAA-AAAA10",
+    "time": 1767916800.0,
+    "type": "withdrawal",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAA17": {
+    "aclass": "currency",
+    "amount": "-0.0500000000",
+    "asset": "XETH",
+    "balance": "0.0000000000",
+    "fee": "0.0000",
+    "refid": "RAAAAA-AAAAA-AAAAA9",
+    "time": 1767830400.2,
+    "type": "bundletransfer",
+    "subtype": "dissolvefrombundle"
+   },
+   "LAAAAA-AAAAA-AAAA16": {
+    "aclass": "currency",
+    "amount": "0.0500000000",
+    "asset": "XETH",
+    "balance": "0.0901500000",
+    "fee": "0.0000",
+    "refid": "RAAAAA-AAAAA-AAAAA9",
+    "time": 1767830400.2,
+    "type": "bundletransfer",
+    "subtype": "dissolvetospot"
+   },
+   "LAAAAA-AAAAA-AAAA15": {
+    "aclass": "currency",
+    "amount": "-0.0010000000",
+    "asset": "XXBT",
+    "balance": "0.0000000000",
+    "fee": "0.0000",
+    "refid": "RAAAAA-AAAAA-AAAAA9",
+    "time": 1767830400.1,
+    "type": "bundletransfer",
+    "subtype": "dissolvefrombundle"
+   },
+   "LAAAAA-AAAAA-AAAA14": {
+    "aclass": "currency",
+    "amount": "0.0010000000",
+    "asset": "XXBT",
+    "balance": "0.0050000000",
+    "fee": "0.0000",
+    "refid": "RAAAAA-AAAAA-AAAAA9",
+    "time": 1767830400.1,
+    "type": "bundletransfer",
+    "subtype": "dissolvetospot"
+   },
+   "LAAAAA-AAAAA-AAAA13": {
+    "aclass": "currency",
+    "amount": "0.0001000000",
+    "asset": "XETH",
+    "balance": "0.0901500000",
+    "fee": "0.0000250000",
+    "refid": "RAAAAA-AAAAA-AAAAA8",
+    "time": 1767744000.0,
+    "type": "staking",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAA12": {
+    "aclass": "currency",
+    "amount": "0.0001000000",
+    "asset": "XETH",
+    "balance": "0.0900750000",
+    "fee": "0.0000250000",
+    "refid": "RAAAAA-AAAAA-AAAAA7",
+    "time": 1767657600.0,
+    "type": "staking",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAA11": {
+    "aclass": "currency",
+    "amount": "0.0400000000",
+    "asset": "XETH",
+    "balance": "0.0900000000",
+    "fee": "0.0000000000",
+    "refid": "RAAAAA-AAAAA-AAAAA6",
+    "time": 1767571200.3,
+    "type": "receive",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAA10": {
+    "aclass": "currency",
+    "amount": "-98.0000",
+    "asset": "EUR.HOLD",
+    "balance": "0.0000",
+    "fee": "1.4700",
+    "refid": "RAAAAA-AAAAA-AAAAA6",
+    "time": 1767571200.2,
+    "type": "spend",
+    "subtype": ""
+   },
+   "LAAAAA-AAAAA-AAAAA9": {
+    "aclass": "currency",
+    "amount": "100.0000",
+    "asset": "EUR.HOLD",
+    "balance": "98.0000",
+    "fee": "2.0000",
+    "refid": "RAAAAA-AAAAA-AAAAA5",
+    "time": 1767571200.1,
+    "type": "deposit",
+    "subtype": ""
+   }
+  },
+  "count": 18
+ }
+}

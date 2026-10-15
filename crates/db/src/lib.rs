@@ -4,7 +4,9 @@
 
 pub mod fx;
 pub mod gold;
+pub mod kraken;
 pub mod prices;
+pub mod transactions;
 
 use std::str::FromStr;
 

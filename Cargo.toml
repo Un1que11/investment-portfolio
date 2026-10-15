@@ -20,6 +20,8 @@ http-body-util = "0.1"
 askama = "0.16"
 calamine = { version = "0.36", features = ["dates"] }
 sha2 = "0.11"
+hmac = "0.13"
+base64 = "0.22"
 rust_xlsxwriter = "0.99"
 rust_decimal = "1"
 rust_decimal_macros = "1"

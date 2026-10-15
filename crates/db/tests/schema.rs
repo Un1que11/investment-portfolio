@@ -90,6 +90,7 @@ async fn migrations_create_all_tables() {
             "fx_rate_days",
             "fx_rates",
             "gold_coins",
+            "kraken_ledger",
             "prices",
             "snapshots",
             "transactions"
