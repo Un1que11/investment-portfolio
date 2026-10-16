@@ -7,9 +7,12 @@ use rust_decimal_macros::dec;
 /// 31.1034768 g, so 1/10 oz is 3.11035 g; 3.11 g is the agreed working weight).
 pub const TENTH_OUNCE_GRAMS: Decimal = dec!(3.11);
 
+/// Highest buyback factor accepted, here and in `config.toml`.
+pub const MAX_BUYBACK_FACTOR: Decimal = dec!(1.5);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GoldError {
-    /// The buyback factor must be in (0, 1.5].
+    /// The buyback factor must be in (0, [`MAX_BUYBACK_FACTOR`]].
     InvalidBuybackFactor(Decimal),
     /// Weights and prices must be positive.
     NonPositive(&'static str, Decimal),
@@ -19,7 +22,10 @@ impl std::fmt::Display for GoldError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             GoldError::InvalidBuybackFactor(x) => {
-                write!(f, "buyback factor must be above 0 and at most 1.5, got {x}")
+                write!(
+                    f,
+                    "buyback factor must be above 0 and at most {MAX_BUYBACK_FACTOR}, got {x}"
+                )
             }
             GoldError::NonPositive(what, x) => write!(f, "{what} must be positive, got {x}"),
         }
@@ -61,7 +67,7 @@ pub fn value_coin(
     if fine_weight_grams <= Decimal::ZERO {
         return Err(GoldError::NonPositive("coin weight", fine_weight_grams));
     }
-    if buyback_factor <= Decimal::ZERO || buyback_factor > dec!(1.5) {
+    if buyback_factor <= Decimal::ZERO || buyback_factor > MAX_BUYBACK_FACTOR {
         return Err(GoldError::InvalidBuybackFactor(buyback_factor));
     }
     let melt = price_per_gram_pln * fine_weight_grams;

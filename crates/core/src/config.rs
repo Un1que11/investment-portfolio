@@ -14,9 +14,7 @@ use serde::Deserialize;
 use serde::de::{self, Deserializer, Visitor};
 
 use crate::AssetClass;
-
-/// Highest gold buyback factor accepted, matching `gold::value_coin`.
-const MAX_BUYBACK_FACTOR: Decimal = dec!(1.5);
+use crate::gold::MAX_BUYBACK_FACTOR;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigError {
@@ -34,7 +32,7 @@ pub enum ConfigError {
     NonPositiveLimit { year: i32, value: Decimal },
     /// The tax rate must be above 0% and below 100%.
     InvalidTaxRate(Decimal),
-    /// The buyback factor must be above 0 and at most 1.5.
+    /// The buyback factor must be above 0 and at most [`MAX_BUYBACK_FACTOR`].
     InvalidBuybackFactor(Decimal),
 }
 
@@ -57,7 +55,10 @@ impl fmt::Display for ConfigError {
                 write!(f, "tax rate must be above 0% and below 100%, got {x}%")
             }
             ConfigError::InvalidBuybackFactor(x) => {
-                write!(f, "buyback factor must be above 0 and at most 1.5, got {x}")
+                write!(
+                    f,
+                    "buyback factor must be above 0 and at most {MAX_BUYBACK_FACTOR}, got {x}"
+                )
             }
         }
     }
