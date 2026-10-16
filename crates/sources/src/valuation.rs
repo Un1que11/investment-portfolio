@@ -121,10 +121,16 @@ impl PortfolioReport {
     }
 
     /// How to split `amount` PLN of new money between the assets to get closer to the targets
-    /// in `config` without selling.
-    pub fn top_up(&self, config: &Config, amount: Decimal) -> Result<TopUp, TopUpError> {
+    /// in `config` without selling. Classes paused in `config` are skipped unless
+    /// `include_paused`.
+    pub fn top_up(
+        &self,
+        config: &Config,
+        amount: Decimal,
+        include_paused: bool,
+    ) -> Result<TopUp, TopUpError> {
         let values = sleeve_values(&self.holdings, &self.valuation, sleeve)?;
-        top_up(&values, config, amount)
+        top_up(&values, config, amount, include_paused)
     }
 
     /// The year's IKZE contributions against the limit and the tax rate in `config`.

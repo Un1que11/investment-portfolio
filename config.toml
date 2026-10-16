@@ -14,6 +14,12 @@ gold = 20
 btc = 75
 eth = 25
 
+# Asset classes whose purchases are paused. The top-up plan skips them (unless asked to include
+# paused classes) and reports what they would need; their targets still count. Missing = false.
+[paused]
+crypto = true
+gold = true
+
 # IKZE contribution limit per calendar year, in PLN. Add each new year when it is announced.
 [ikze.limits]
 2026 = "11304.00"

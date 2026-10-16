@@ -349,8 +349,7 @@ async fn report_compares_holdings_with_the_targets() {
     portfolio_xtb::import::import(&pool, &export).await.unwrap();
     kraken_ledger(&pool).await;
     let ledger = load_ledger(&pool).await.unwrap();
-    let config = Config::from_toml(
-        r#"
+    const CONFIG: &str = r#"
         [targets]
         vwce = 55
         crypto = 25
@@ -364,9 +363,8 @@ async fn report_compares_holdings_with_the_targets() {
         rate_percent = 12
         [gold]
         buyback_factor = "0.95"
-        "#,
-    )
-    .unwrap();
+        "#;
+    let config = Config::from_toml(CONFIG).unwrap();
     let date = d("2026-10-15");
     let req = requirements(&ledger, date);
     let rate = |k: &(String, NaiveDate)| (k.clone(), Some(dec!(4)));
@@ -402,20 +400,39 @@ async fn report_compares_holdings_with_the_targets() {
     );
     assert_eq!(split.eth.pln(), dec!(-200));
 
-    // 1000 PLN more: base 3000, targets 1650 / 750 / 600, gaps VWCE +450, crypto -50, gold
-    // +600. Gold alone: level 600 - 1000 < 450. Gold and VWCE: level (1050 - 1000) / 2 = 25.
-    // Buy gold 575 and VWCE 425; both end 25 PLN short, crypto stays 50 over.
-    let t = report(&ledger, date, &inputs)
-        .unwrap()
-        .top_up(&config, dec!(1000))
-        .unwrap();
-    let buy = |s: Sleeve| t.buys[&s];
+    // 1000 PLN more: base 3000, targets 1650 / 750 / 600, needs VWCE 450, crypto 0 (50 over),
+    // gold 600 = 1050, above 1000: pro rata, VWCE 1000 x 450 / 1050 = 428.571..., gold
+    // 1000 x 600 / 1050 = 571.428... VWCE ends 21.43 PLN short, gold 28.57, crypto 50 over.
+    let r = report(&ledger, date, &inputs).unwrap();
+    let t = r.top_up(&config, dec!(1000), false).unwrap();
+    let buy = |s: Sleeve| t.buys[&s].round_dp(2);
     assert_eq!(
         [Sleeve::Vwce, Sleeve::Btc, Sleeve::Eth, Sleeve::Gold].map(buy),
-        [dec!(425), dec!(0), dec!(0), dec!(575)]
+        [dec!(428.57), dec!(0), dec!(0), dec!(571.43)]
     );
-    let after = |c: AssetClass| t.after.by_class[&c].pln();
-    assert_eq!(AssetClass::ALL.map(after), [dec!(-25), dec!(50), dec!(-25)]);
+    let after = |c: AssetClass| t.after.by_class[&c].pln().round_dp(2);
+    assert_eq!(
+        AssetClass::ALL.map(after),
+        [dec!(-21.43), dec!(50), dec!(-28.57)]
+    );
+
+    // With gold paused, VWCE and crypto are bought: needs 450 + 0 leave a surplus of 550, split
+    // 0.55 : 0.25 of 0.80. VWCE 450 + 378.125 = 828.125, crypto 171.875. Crypto after 971.875:
+    // BTC (800 held) is over its 728.906..., ETH needs 242.968..., so ETH takes all 171.875.
+    // Gold would need its 600.
+    let paused = Config::from_toml(&format!("{CONFIG}\n[paused]\ngold = true\n")).unwrap();
+    let t = r.top_up(&paused, dec!(1000), false).unwrap();
+    assert_eq!(
+        [Sleeve::Vwce, Sleeve::Btc, Sleeve::Eth, Sleeve::Gold].map(|s| t.buys[&s]),
+        [dec!(828.125), dec!(0), dec!(171.875), dec!(0)]
+    );
+    assert_eq!(
+        t.would_need,
+        BTreeMap::from([(AssetClass::Gold, dec!(600))])
+    );
+    // Including paused classes gives the first plan again.
+    let all = r.top_up(&paused, dec!(1000), true).unwrap();
+    assert_eq!(all.buys[&Sleeve::Gold].round_dp(2), dec!(571.43));
 
     // Without a VWCE price there is no allocation to show, and no plan.
     inputs.position_values.insert("VWCE".into(), None);
@@ -423,7 +440,7 @@ async fn report_compares_holdings_with_the_targets() {
     let err = r.allocation(&config).unwrap_err();
     assert_eq!(err, AllocationError::Unpriced(vec!["VWCE".into()]));
     assert_eq!(
-        r.top_up(&config, dec!(1000)),
+        r.top_up(&config, dec!(1000), false),
         Err(TopUpError::Allocation(err))
     );
 }

@@ -1,11 +1,11 @@
-//! Portfolio settings from `config.toml`: target allocation, IKZE limits, tax rate and the gold
-//! buyback factor.
+//! Portfolio settings from `config.toml`: target allocation, paused asset classes, IKZE limits,
+//! tax rate and the gold buyback factor.
 //!
 //! Parsing and validation are pure; reading the file is left to the caller. Every number is an
 //! exact `Decimal`: the file may write a whole number bare (`55`) or any number as a string
 //! (`"0.95"`). TOML floats are rejected so that no value passes through `f64`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use rust_decimal::Decimal;
@@ -78,6 +78,7 @@ pub struct CryptoSplit {
 pub struct Config {
     targets_percent: BTreeMap<AssetClass, Decimal>,
     crypto_split: CryptoSplit,
+    paused: BTreeSet<AssetClass>,
     ikze_limits: BTreeMap<i32, Decimal>,
     tax_rate_percent: Decimal,
     gold_buyback_factor: Decimal,
@@ -114,6 +115,12 @@ impl Config {
         self.target_percent(AssetClass::Crypto) * self.crypto_split.eth_percent / dec!(100)
     }
 
+    /// Whether purchases of a class are paused: the top-up plan skips it unless asked not to.
+    /// Its target still counts in the allocation.
+    pub fn is_paused(&self, class: AssetClass) -> bool {
+        self.paused.contains(&class)
+    }
+
     /// IKZE contribution limit for a calendar year, in PLN, if the config has one.
     pub fn ikze_limit(&self, year: i32) -> Option<Decimal> {
         self.ikze_limits.get(&year).copied()
@@ -144,6 +151,8 @@ impl Config {
 #[serde(deny_unknown_fields)]
 struct RawConfig {
     targets: RawTargets,
+    #[serde(default)]
+    paused: RawPaused,
     ikze: RawIkze,
     tax: RawTax,
     gold: RawGold,
@@ -163,6 +172,18 @@ struct RawTargets {
 struct RawSplit {
     btc: Dec,
     eth: Dec,
+}
+
+/// `[paused]`: one optional flag per class; a missing table or key means not paused.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct RawPaused {
+    #[serde(default)]
+    vwce: bool,
+    #[serde(default)]
+    crypto: bool,
+    #[serde(default)]
+    gold: bool,
 }
 
 #[derive(Deserialize)]
@@ -207,6 +228,16 @@ impl RawConfig {
             eth_percent: split.eth.0,
         };
 
+        let p = &self.paused;
+        let paused = [
+            (AssetClass::Vwce, p.vwce),
+            (AssetClass::Crypto, p.crypto),
+            (AssetClass::Gold, p.gold),
+        ]
+        .into_iter()
+        .filter_map(|(class, on)| on.then_some(class))
+        .collect();
+
         let mut ikze_limits = BTreeMap::new();
         for (key, limit) in &self.ikze.limits {
             let year = key
@@ -240,6 +271,7 @@ impl RawConfig {
         Ok(Config {
             targets_percent,
             crypto_split,
+            paused,
             ikze_limits,
             tax_rate_percent,
             gold_buyback_factor,
@@ -339,6 +371,31 @@ mod tests {
         let c = Config::from_toml(include_str!("../../../config.toml")).unwrap();
         assert_eq!(c.target_percent(AssetClass::Vwce), dec!(55));
         assert_eq!(c.ikze_limit(2026), Some(dec!(11304.00)));
+        // Crypto and gold purchases are paused for now; VWCE is bought.
+        assert_eq!(AssetClass::ALL.map(|a| c.is_paused(a)), [false, true, true]);
+    }
+
+    #[test]
+    fn nothing_is_paused_without_a_paused_table() {
+        let c = Config::from_toml(VALID).unwrap();
+        assert!(AssetClass::ALL.iter().all(|&a| !c.is_paused(a)));
+    }
+
+    #[test]
+    fn paused_flags_are_read_per_class() {
+        let c =
+            Config::from_toml(&format!("{VALID}\n[paused]\ngold = true\nvwce = false\n")).unwrap();
+        assert_eq!(
+            AssetClass::ALL.map(|a| c.is_paused(a)),
+            [false, false, true]
+        );
+        // An unknown class or a non-boolean flag is an error, not silently ignored.
+        for bad in ["bonds = true", "gold = 1", "gold = \"yes\""] {
+            assert!(matches!(
+                err(&format!("{VALID}\n[paused]\n{bad}\n")),
+                ConfigError::Parse(_)
+            ));
+        }
     }
 
     #[test]
