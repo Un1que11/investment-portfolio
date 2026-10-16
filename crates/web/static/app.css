@@ -1,0 +1,68 @@
+/* Portfel layout and component classes, on top of design/tokens.css.
+   Declarations are copied from the inline styles in design/reference/*.html.
+   Colours come only from the tokens. */
+
+/* Phone (≤760px): the sidebar gives way to the top bar and nav pills of screens/03. */
+.topbar,.topnav{display:none}
+.topnav{scrollbar-width:none}
+@media (max-width:760px){
+.side{display:none!important}
+.topbar,.topnav{display:flex}
+}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.sheet-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:32px}
+@media (max-width:1100px){.sheet-grid{grid-template-columns:minmax(0,1fr)}.sheet-grid>*{grid-column:auto!important}}
+
+/* Buttons */
+.btn{height:44px;padding:0 18px;border:0;border-radius:9px;font-size:14px;font-weight:500;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn-primary{background:var(--text);color:var(--bg)}
+.btn-secondary{padding:0 16px;border:1px solid var(--line);background:transparent;color:var(--text);font-weight:400}
+.btn-link{padding:0 14px;background:transparent;color:var(--accent)}
+.btn-icon{width:44px;padding:0;border:1px solid var(--line);background:transparent;color:var(--text-2)}
+.btn:disabled{background:var(--surface-2);color:var(--text-3);cursor:default}
+
+/* Segmented control (period switch) */
+.seg{display:flex;gap:2px;padding:3px;background:var(--surface-2);border-radius:10px;align-self:flex-start}
+.seg button{min-width:44px;height:30px;padding:0 12px;border:0;border-radius:7px;font-size:13px;font-weight:500;background:transparent;color:var(--text-2)}
+.seg button[aria-pressed=true]{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+/* Inputs */
+.field-wrap{flex:1 1 160px;display:flex;flex-direction:column;gap:6px}
+.field-label{font-size:12px;color:var(--text-3)}
+.field{height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line-2);border-radius:9px;background:var(--surface);color:var(--text);font:inherit;font-size:14px;color-scheme:light dark}
+.field[aria-invalid=true]{border-color:var(--loss)}
+.field-error{font-size:12px;color:var(--loss)}
+.field-amount{width:100%;height:52px;padding:0 36px 0 14px;background:var(--bg);font-size:22px;font-weight:500;font-variant-numeric:tabular-nums}
+.check{display:flex;align-items:center;gap:10px;height:44px;font-size:13px;color:var(--text-2)}
+.check input{width:16px;height:16px;margin:0;accent-color:var(--accent)}
+
+/* Status chips */
+.chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:6px;font-size:12px;font-weight:500}
+.chip-paused{border:1px solid var(--line);color:var(--text-3);font-weight:400}
+.chip-new{background:var(--accent-soft);color:var(--accent)}
+.chip-added{background:var(--gain-soft);color:var(--gain)}
+.chip-stale{background:var(--warn-soft);color:var(--warn);font-weight:400}
+
+/* Tables */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{font-size:12px;font-weight:400;color:var(--text-3);text-align:left;padding:10px 14px}
+.tbl td{padding:12px 14px}
+.tbl tbody tr{border-top:1px solid var(--line)}
+.tbl tbody tr:hover{background:var(--surface-2)}
+.tbl tr.muted{color:var(--text-3)}
+.tbl .num{text-align:right}
+
+/* Pages not restyled yet (Gold until P29): readable inside the new shell. */
+.legacy h1{margin:0;font-size:15px;font-weight:500;color:var(--text-2)}
+.legacy table{width:100%;border-collapse:collapse;font-size:13px;margin-top:16px}
+.legacy th,.legacy td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
+.legacy th{font-weight:400;color:var(--text-3)}
+.legacy .num{text-align:right}
+.legacy form.add{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:12px;align-items:end;margin-top:16px}
+.legacy label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-3)}
+.legacy input{height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line-2);border-radius:9px;background:var(--surface);color:var(--text);font:inherit;font-size:14px;color-scheme:light dark}
+.legacy button{height:44px;padding:0 16px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text)}
+.legacy form.add button{border:0;background:var(--text);color:var(--bg);font-weight:500}
+.legacy .error{font-size:12px;color:var(--loss)}
+.legacy .muted{color:var(--text-3)}

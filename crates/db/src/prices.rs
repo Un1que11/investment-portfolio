@@ -181,11 +181,19 @@ pub async fn last_fetched_at(
             .bind(source)
             .fetch_one(pool)
             .await?;
-    latest
-        .map(|text| {
-            DateTime::parse_from_rfc3339(&text)
-                .map(|t| t.with_timezone(&Utc))
-                .map_err(|e| sqlx::Error::Decode(Box::new(e)))
-        })
-        .transpose()
+    latest.as_deref().map(parse_fetched_at).transpose()
+}
+
+/// When any close was last written, from any source: the "Prices updated" time in the sidebar.
+pub async fn latest_fetch(pool: &SqlitePool) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    let latest: Option<String> = sqlx::query_scalar("SELECT max(fetched_at) FROM prices")
+        .fetch_one(pool)
+        .await?;
+    latest.as_deref().map(parse_fetched_at).transpose()
+}
+
+fn parse_fetched_at(text: &str) -> Result<DateTime<Utc>, sqlx::Error> {
+    DateTime::parse_from_rfc3339(text)
+        .map(|t| t.with_timezone(&Utc))
+        .map_err(|e| sqlx::Error::Decode(Box::new(e)))
 }

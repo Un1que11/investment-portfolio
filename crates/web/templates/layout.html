@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Portfel{% endblock %}</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4" crossorigin="anonymous"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="app" data-theme="{{ shell.theme.as_str() }}" style="min-height: 100vh; display: block">
+{%- if !shell.chosen %}
+<script>if (window.matchMedia("(prefers-color-scheme: dark)").matches) document.currentScript.parentElement.dataset.theme = "dark";</script>
+{%- endif %}
+
+<header class="topbar" style="align-items: center; justify-content: space-between; gap: 12px; height: 56px; padding: 0 16px; border-bottom: 1px solid var(--line)">
+  <a href="/" style="display: flex; align-items: center; gap: 9px; color: var(--text); font-weight: 600; font-size: 16px">{% include "logo.svg" %}Portfel</a>
+  <div style="display: flex; align-items: center; gap: 4px">
+    <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3)"><span style="width: 6px; height: 6px; border-radius: 3px; background: {{ shell.sync.dot }}"></span>{{ shell.sync.short }}</span>
+    <form method="post" action="/theme" style="margin: 0">
+      <input type="hidden" name="next" value="{{ shell.path }}">
+      <button type="submit" name="theme" value="{{ shell.theme.other().as_str() }}" data-theme-next aria-label="Switch colour theme" style="width: 44px; height: 44px; border: 0; background: transparent; color: var(--text-2); display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10z"/></svg></button>
+    </form>
+  </div>
+</header>
+
+<nav class="topnav" aria-label="Main" style="gap: 6px; padding: 10px 16px; overflow-x: auto; border-bottom: 1px solid var(--line)">
+  {%- for item in shell.nav %}
+  {%- if item.current %}
+  <a href="{{ item.href }}" aria-current="page" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 500">{{ item.label }}</a>
+  {%- else if item.built %}
+  <a href="{{ item.href }}" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; color: var(--text-2); font-size: 14px">{{ item.label }}</a>
+  {%- else %}
+  <span aria-disabled="true" title="Not built yet" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; color: var(--text-3); font-size: 14px">{{ item.label }}</span>
+  {%- endif %}
+  {%- endfor %}
+</nav>
+
+<div class="shell" style="display: flex; flex-direction: row; align-items: stretch; min-height: 100vh">
+<aside class="side" style="width: 224px; flex: 0 0 224px; box-sizing: border-box; padding: 28px 16px 24px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 32px">
+  <a href="/" style="display: flex; align-items: center; gap: 10px; padding: 0 8px; color: var(--text); font-weight: 600; font-size: 16px; letter-spacing: -0.01em; flex: 0 0 auto">{% include "logo.svg" %}Portfel</a>
+  <nav class="nav" aria-label="Main">
+    <div class="navlist" style="display: flex; flex-direction: column; gap: 2px">
+      {%- for item in shell.nav %}
+      {%- if item.current %}
+      <a href="{{ item.href }}" aria-current="page" style="display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 8px; font-size: 14px; background: var(--surface-2); color: var(--text); font-weight: 500; white-space: nowrap">{{ item.icon|safe }}{{ item.label }}</a>
+      {%- else if item.built %}
+      <a href="{{ item.href }}" style="display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 8px; font-size: 14px; white-space: nowrap">{{ item.icon|safe }}{{ item.label }}</a>
+      {%- else %}
+      <span aria-disabled="true" title="Not built yet" style="display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 8px; font-size: 14px; white-space: nowrap; color: var(--text-3)">{{ item.icon|safe }}{{ item.label }}</span>
+      {%- endif %}
+      {%- endfor %}
+    </div>
+  </nav>
+  <div class="sidefoot" style="margin-top: auto; display: flex; flex-direction: column; gap: 12px; padding: 0 8px">
+    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3)"><span style="width: 6px; height: 6px; border-radius: 3px; background: {{ shell.sync.dot }}; flex: 0 0 auto"></span>{{ shell.sync.long }}</div>
+    <form method="post" action="/theme" style="margin: 0">
+      <input type="hidden" name="next" value="{{ shell.path }}">
+      <button class="ghost" type="submit" name="theme" value="{{ shell.theme.other().as_str() }}" data-theme-next aria-label="Switch colour theme" style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 0 -10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px">{% include "moon.svg" %}<span data-theme-label>{{ shell.theme.toggle_label() }}</span></button>
+    </form>
+  </div>
+</aside>
+
+<main class="main" style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 40px 56px 72px">
+<div style="max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 32px">
+{% block content %}{% endblock %}
+</div>
+</main>
+</div>
+</div>
+{%- if !shell.chosen %}
+<script>
+  // The theme followed the system: point the toggle at the other one.
+  (function () {
+    var dark = document.querySelector(".app").dataset.theme === "dark";
+    document.querySelectorAll("[data-theme-next]").forEach(function (b) { b.value = dark ? "light" : "dark"; });
+    document.querySelectorAll("[data-theme-label]").forEach(function (s) { s.textContent = dark ? "Light theme" : "Dark theme"; });
+  })();
+</script>
+{%- endif %}
+</body>
+</html>

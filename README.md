@@ -203,6 +203,16 @@ Pages:
   only once per chart.
 - `/gold`: add, list and delete physical gold coins (purchase date, price in PLN, fine gold
   weight, optional manual quote and label). Amounts may be typed with a decimal comma.
+- `/components`: the shared components (number tile, delta badge, progress and allocation
+  bars, asset card, table rows, buttons, inputs, status chips) with the design's sample figures,
+  to compare with `design/screens/09-components.png`.
+
+Every page uses the Portfel layout from `design/`: the sidebar (a top bar with nav pills at
+760px and narrower), `design/tokens.css` served as `/static/tokens.css`, and the Geist font from
+Google Fonts. The theme follows the system until the sidebar toggle is used; the choice is then
+kept in a `theme` cookie. Nav entries for pages not built to the design yet are shown but not
+linked. Numbers are formatted by `portfolio_web::format` (`11 500,00 zł`, `−` for minus, `+14,0%`,
+`pp` for drift).
 
 ```bash
 cargo run -p portfolio-sync

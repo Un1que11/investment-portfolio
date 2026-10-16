@@ -1,0 +1,133 @@
+{#- Shared components (screens/09-components.png), markup and inline styles copied from
+    design/reference/09-components.html. Import with {% import "ui.html" as ui %}. -#}
+
+{#- A number tile: caption, figure (colour token or ""), optional note. -#}
+{% macro tile(label, figure, color, note) %}
+<div style="padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px">
+  <div style="font-size: 12px; color: var(--text-3)">{{ label }}</div>
+  <div style="font-size: 22px; font-weight: 500; letter-spacing: -0.02em{% if !color.is_empty() %}; color: {{ color }}{% endif %}">{{ figure }}</div>
+  {%- if !note.is_empty() %}
+  <div style="font-size: 12px; color: var(--text-3)">{{ note }}</div>
+  {%- endif %}
+</div>
+{% endmacro %}
+
+{#- A delta badge: a format::Delta on its soft background, arrow + sign, never colour alone. -#}
+{% macro delta_badge(d) %}
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 14px; font-weight: 500; background: {{ d.tone.soft() }}; color: {{ d.tone.color() }}">{% if !d.arrow().is_empty() %}{{ d.arrow() }}&nbsp;{% endif %}{{ d.text }}</span>
+{% endmacro %}
+
+{#- A delta as coloured text with its arrow: "▲ +14,0%". -#}
+{% macro delta_text(d) %}
+<span style="color: {{ d.tone.color() }}">{% if !d.arrow().is_empty() %}{{ d.arrow() }} {% endif %}{{ d.text }}</span>
+{% endmacro %}
+
+{#- Drift from target (format::drift_pp): neutral grey whatever its sign. -#}
+{% macro drift(text) %}
+<span style="color: var(--text-2)">{{ text }}</span>
+{% endmacro %}
+
+{#- A progress bar: value and "of" labels, CSS width, aria-valuenow (0–100), caption under it. -#}
+{% macro progress(label, value, of, width, now, caption) %}
+<div style="display: flex; flex-direction: column; gap: 8px">
+  <div style="display: flex; justify-content: space-between; font-size: 13px">
+    <span>{{ value }}</span>
+    <span style="color: var(--text-3)">of {{ of }}</span>
+  </div>
+  <div role="progressbar" aria-label="{{ label }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ now }}" style="position: relative; height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden">
+    <div style="position: absolute; left: 0; top: 0; bottom: 0; width: {{ width }}; background: var(--accent); border-radius: 5px 0 0 5px"></div>
+  </div>
+  {%- if !caption.is_empty() %}
+  <div style="font-size: 12px; color: var(--text-3)">{{ caption }}</div>
+  {%- endif %}
+</div>
+{% endmacro %}
+
+{#- Actual shares over the dashed targets (base::allocation_bar). -#}
+{% macro allocation_bar(segments) %}
+<div style="display: flex; flex-direction: column; gap: 8px">
+  <div style="display: flex; gap: 3px; height: 10px">
+    {%- for s in segments %}
+    <div style="width: {{ s.width }}; background: {{ s.color }}; border-radius: {{ s.radius }}"></div>
+    {%- endfor %}
+  </div>
+  <div style="display: flex; gap: 3px; height: 10px">
+    {%- for s in segments %}
+    <div style="width: {{ s.target_width }}; border: 1.5px dashed {{ s.color }}; box-sizing: border-box; border-radius: {{ s.radius }}"></div>
+    {%- endfor %}
+  </div>
+</div>
+{% endmacro %}
+
+{#- An asset card (base::AssetCard). -#}
+{% macro asset_card(c) %}
+<article style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 18px">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start">
+    <div style="display: flex; flex-direction: column; gap: 3px">
+      <h3 style="margin: 0; font-size: 15px; font-weight: 600">{{ c.name }}</h3>
+      <div style="font-size: 12px; color: var(--text-3)">{{ c.sub }}</div>
+    </div>
+    <span style="font-size: 12px; color: var(--text-3); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px">#{{ c.rank }}</span>
+  </div>
+  <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px">
+    <div style="font-size: 24px; font-weight: 500; letter-spacing: -0.02em">{{ c.value }}</div>
+    {%- if let Some(path) = c.spark %}
+    <svg width="96" height="32" viewBox="0 0 96 32" aria-hidden="true"><path d="{{ path }}" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linejoin="round"/></svg>
+    {%- endif %}
+  </div>
+  <dl style="margin: 0; display: flex; flex-direction: column; gap: 9px; font-size: 13px">
+    <div style="display: flex; justify-content: space-between">
+      <dt style="color: var(--text-3)">Invested</dt>
+      <dd style="margin: 0">{{ c.invested }}</dd>
+    </div>
+    <div style="display: flex; justify-content: space-between">
+      <dt style="color: var(--text-3)">P&amp;L</dt>
+      <dd style="margin: 0; color: {{ c.pnl.tone.color() }}">{% if !c.pnl.arrow().is_empty() %}{{ c.pnl.arrow() }} {% endif %}{{ c.pnl.text }} · {{ c.pnl_percent }}</dd>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 7px">
+      <div style="display: flex; justify-content: space-between">
+        <dt style="color: var(--text-3)">Share of profit</dt>
+        <dd style="margin: 0">{{ c.share }}</dd>
+      </div>
+      <div style="height: 4px; border-radius: 2px; background: var(--surface-2)">
+        <div style="height: 100%; width: {{ c.share_width }}; background: var(--accent); border-radius: 2px"></div>
+      </div>
+    </div>
+  </dl>
+</article>
+{% endmacro %}
+
+{#- A status chip: "new", "added", "stale" or "paused". -#}
+{% macro chip(kind, text) %}
+{%- if kind == "paused" %}
+<span class="chip chip-paused"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>{{ text }}</span>
+{%- else if kind == "stale" %}
+<span class="chip chip-stale"><span style="width: 6px; height: 6px; border-radius: 3px; background: var(--warn)"></span>{{ text }}</span>
+{%- else %}
+<span class="chip chip-{{ kind }}">{{ text }}</span>
+{%- endif %}
+{% endmacro %}
+
+{#- A labelled text input with an optional error under it. -#}
+{% macro field(id, label, name, value, error) %}
+<div class="field-wrap">
+  <label for="{{ id }}" class="field-label">{{ label }}</label>
+  {%- if let Some(e) = error %}
+  <input class="field" id="{{ id }}" name="{{ name }}" type="text" value="{{ value }}" aria-invalid="true" aria-describedby="{{ id }}-msg">
+  <span id="{{ id }}-msg" class="field-error">{{ e }}</span>
+  {%- else %}
+  <input class="field" id="{{ id }}" name="{{ name }}" type="text" value="{{ value }}">
+  {%- endif %}
+</div>
+{% endmacro %}
+
+{#- The big amount input with the "zł" suffix. -#}
+{% macro amount_field(id, label, name, value) %}
+<div class="field-wrap">
+  <label for="{{ id }}" class="field-label">{{ label }}</label>
+  <div style="position: relative">
+    <input class="field field-amount" id="{{ id }}" name="{{ name }}" type="text" inputmode="decimal" value="{{ value }}">
+    <span aria-hidden="true" style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--text-3)">zł</span>
+  </div>
+</div>
+{% endmacro %}
