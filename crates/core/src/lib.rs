@@ -10,6 +10,7 @@ pub mod gold;
 pub mod pnl;
 pub mod portfolio;
 pub mod price;
+pub mod topup;
 pub mod xirr;
 
 use std::fmt;

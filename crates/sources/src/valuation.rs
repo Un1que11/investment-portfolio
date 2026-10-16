@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
-use portfolio_core::allocation::{Allocation, AllocationError, Sleeve, allocation};
+use portfolio_core::allocation::{Allocation, AllocationError, Sleeve, allocation, sleeve_values};
 use portfolio_core::attribution::{ProfitAttribution, profit_attribution};
 use portfolio_core::config::Config;
 use portfolio_core::pnl::{PortfolioPnl, asset_flows, portfolio_pnl};
@@ -17,6 +17,7 @@ use portfolio_core::portfolio::{
     Contributions, Holdings, LedgerTx, MissingRate, Valuation, holdings_on, net_contributions_on,
     value,
 };
+use portfolio_core::topup::{TopUp, TopUpError, top_up};
 use portfolio_core::xirr::{PortfolioXirr, portfolio_xirr};
 use portfolio_db::gold as coins;
 use rust_decimal::Decimal;
@@ -97,6 +98,13 @@ impl PortfolioReport {
     /// How far the holdings are from the targets in `config` (classes and the crypto split).
     pub fn allocation(&self, config: &Config) -> Result<Allocation, AllocationError> {
         allocation(&self.holdings, &self.valuation, config, sleeve)
+    }
+
+    /// How to split `amount` PLN of new money between the assets to get closer to the targets
+    /// in `config` without selling.
+    pub fn top_up(&self, config: &Config, amount: Decimal) -> Result<TopUp, TopUpError> {
+        let values = sleeve_values(&self.holdings, &self.valuation, sleeve)?;
+        top_up(&values, config, amount)
     }
 }
 

@@ -126,6 +126,21 @@ in percentage points and in PLN (positive = overweight), so per class they add u
 PLN deviation within crypto is what would have to move between BTC and ETH. Without a price for
 every held asset there is no allocation.
 
+A third argument, an amount in PLN, adds a top-up plan: how to split that much new money between
+VWCE, BTC, ETH and gold to get closer to the targets without selling.
+
+```bash
+cargo run -p portfolio-sources --example portfolio -- 2026-10-14 0.95 2000
+```
+
+With the new money the base grows by the amount, and each class's gap is its target share of the
+new base minus its value now. When no class is over its new target, every gap is bought and the
+portfolio lands on target. Otherwise overweight classes get nothing, and the biggest gaps are
+filled first down to a common level, so the classes that get money end the same PLN short of
+their targets. The crypto purchase is then split between BTC and ETH the same way, against the
+crypto split; if crypto is overweight, neither coin gets anything. Cash in the accounts is not
+counted, as in the allocation.
+
 ## Configuration
 
 Settings live in `config.toml` at the repository root (another file can be named with

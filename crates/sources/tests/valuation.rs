@@ -6,6 +6,7 @@ use portfolio_core::AssetClass;
 use portfolio_core::allocation::{AllocationError, Sleeve};
 use portfolio_core::config::Config;
 use portfolio_core::portfolio::{AccountKind, TxKind};
+use portfolio_core::topup::TopUpError;
 use portfolio_core::xirr::XirrError;
 use portfolio_db::gold::{NewCoin, add_coin};
 use portfolio_db::open_in_memory;
@@ -302,13 +303,30 @@ async fn report_compares_holdings_with_the_targets() {
     );
     assert_eq!(split.eth.pln(), dec!(-200));
 
-    // Without a VWCE price there is no allocation to show.
-    inputs.position_values.insert("VWCE".into(), None);
-    let err = report(&ledger, date, &inputs)
+    // 1000 PLN more: base 3000, targets 1650 / 750 / 600, gaps VWCE +450, crypto -50, gold
+    // +600. Gold alone: level 600 - 1000 < 450. Gold and VWCE: level (1050 - 1000) / 2 = 25.
+    // Buy gold 575 and VWCE 425; both end 25 PLN short, crypto stays 50 over.
+    let t = report(&ledger, date, &inputs)
         .unwrap()
-        .allocation(&config)
-        .unwrap_err();
+        .top_up(&config, dec!(1000))
+        .unwrap();
+    let buy = |s: Sleeve| t.buys[&s];
+    assert_eq!(
+        [Sleeve::Vwce, Sleeve::Btc, Sleeve::Eth, Sleeve::Gold].map(buy),
+        [dec!(425), dec!(0), dec!(0), dec!(575)]
+    );
+    let after = |c: AssetClass| t.after.by_class[&c].pln();
+    assert_eq!(AssetClass::ALL.map(after), [dec!(-25), dec!(50), dec!(-25)]);
+
+    // Without a VWCE price there is no allocation to show, and no plan.
+    inputs.position_values.insert("VWCE".into(), None);
+    let r = report(&ledger, date, &inputs).unwrap();
+    let err = r.allocation(&config).unwrap_err();
     assert_eq!(err, AllocationError::Unpriced(vec!["VWCE".into()]));
+    assert_eq!(
+        r.top_up(&config, dec!(1000)),
+        Err(TopUpError::Allocation(err))
+    );
 }
 
 #[tokio::test]

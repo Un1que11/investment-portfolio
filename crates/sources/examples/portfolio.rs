@@ -1,7 +1,8 @@
 //! Print holdings, net contributions, value, P&L, each asset's contribution to it, XIRR and the
-//! deviation from the target allocation in PLN for a date (default: today):
+//! deviation from the target allocation in PLN for a date (default: today), and optionally how
+//! to split a top-up of N PLN:
 //!
-//!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor]
+//!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor] [N]
 //!
 //! Uses PORTFOLIO_DB_URL (default sqlite://portfolio.db) and ALPHAVANTAGE_API_KEY for VWCE
 //! (environment or `.env`). Targets and the gold buyback factor come from `config.toml` (or the
@@ -47,6 +48,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(s) => s.parse::<Decimal>()?,
         None => config.gold_buyback_factor(),
     };
+    let top_up = args.next().map(|s| s.parse::<Decimal>()).transpose()?;
     let db_url =
         std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned());
     let pool = portfolio_db::open(&db_url).await?;
@@ -170,6 +172,26 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Err(e) => println!("Allocation: not available ({e})"),
+    }
+    if let Some(amount) = top_up {
+        match r.top_up(&config, amount) {
+            Ok(t) => {
+                println!("Top-up of {} PLN without selling, buy:", pln(amount));
+                for (s, buy) in &t.buys {
+                    println!("  {:<11} {:>14} PLN", s.as_str(), pln(*buy));
+                }
+                println!("Deviation from target after it:");
+                for (class, d) in &t.after.by_class {
+                    line(class.as_str(), d);
+                }
+                if let Some(split) = &t.after.within_crypto {
+                    println!("  within crypto:");
+                    line("btc", &split.btc);
+                    line("eth", &split.eth);
+                }
+            }
+            Err(e) => println!("Top-up: not available ({e})"),
+        }
     }
     for p in &r.problems {
         println!("  note: {p}");

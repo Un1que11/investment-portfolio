@@ -38,6 +38,15 @@ impl Sleeve {
             Sleeve::Gold => AssetClass::Gold,
         }
     }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Sleeve::Vwce => "vwce",
+            Sleeve::Btc => "btc",
+            Sleeve::Eth => "eth",
+            Sleeve::Gold => "gold",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,6 +129,16 @@ pub fn allocation(
     config: &Config,
     sleeve: impl Fn(&str) -> Option<Sleeve>,
 ) -> Result<Allocation, AllocationError> {
+    allocation_of(&sleeve_values(holdings, valuation, sleeve)?, config)
+}
+
+/// PLN value of each sleeve held (sleeves not held are absent). `sleeve(symbol)` says which
+/// target an asset counts towards; cash (and anything missing from `holdings`) is not part of it.
+pub fn sleeve_values(
+    holdings: &Holdings,
+    valuation: &Valuation,
+    sleeve: impl Fn(&str) -> Option<Sleeve>,
+) -> Result<BTreeMap<Sleeve, Decimal>, AllocationError> {
     let mut values: BTreeMap<Sleeve, Decimal> = BTreeMap::new();
     let mut unclassified = Vec::new();
     let mut unpriced = Vec::new();
@@ -136,7 +155,14 @@ pub fn allocation(
     if !unpriced.is_empty() {
         return Err(AllocationError::Unpriced(unpriced));
     }
+    Ok(values)
+}
 
+/// Compares sleeve values (PLN; a missing sleeve is worth nothing) with the targets.
+pub fn allocation_of(
+    values: &BTreeMap<Sleeve, Decimal>,
+    config: &Config,
+) -> Result<Allocation, AllocationError> {
     let value = |s: Sleeve| values.get(&s).copied().unwrap_or_default();
     let class_value = |class: AssetClass| -> Decimal {
         values
@@ -437,5 +463,6 @@ mod tests {
         assert_eq!(Sleeve::Btc.class(), AssetClass::Crypto);
         assert_eq!(Sleeve::Eth.class(), AssetClass::Crypto);
         assert_eq!(Sleeve::Gold.class(), AssetClass::Gold);
+        assert_eq!(Sleeve::Btc.as_str(), "btc");
     }
 }
