@@ -1,0 +1,27 @@
+# Portfolio settings. Read by `portfolio_core::config::Config`; see README ("Configuration").
+#
+# Numbers are exact decimals: write whole numbers bare (55) and fractions as strings ("0.95").
+# TOML floats such as 0.95 are rejected, because they would pass through binary floating point.
+
+# Target allocation of the whole portfolio, in percent. Must add up to exactly 100.
+[targets]
+vwce = 55
+crypto = 25
+gold = 20
+
+# How the crypto share is split, in percent of the crypto share. Must add up to exactly 100.
+[targets.crypto_split]
+btc = 75
+eth = 25
+
+# IKZE contribution limit per calendar year, in PLN. Add each new year when it is announced.
+[ikze.limits]
+2026 = "11304.00"
+
+# Personal income tax rate used to estimate the IKZE deduction, in percent (12 or 32).
+[tax]
+rate_percent = 12
+
+# Share of the melt value a dealer pays for a coin without a manual quote. Above 0, at most 1.5.
+[gold]
+buyback_factor = "0.95"

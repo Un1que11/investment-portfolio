@@ -3,9 +3,11 @@
 //!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor]
 //!
 //! Uses PORTFOLIO_DB_URL (default sqlite://portfolio.db) and ALPHAVANTAGE_API_KEY for VWCE
-//! (environment or `.env`). The gold buyback factor defaults to 1 until config.toml (P3).
+//! (environment or `.env`). The gold buyback factor comes from `config.toml` (or the file named
+//! by PORTFOLIO_CONFIG); a factor given on the command line overrides it.
 
 use chrono::{Local, NaiveDate, Utc};
+use portfolio_core::config::Config;
 use portfolio_sources::alphavantage::AlphaVantageClient;
 use portfolio_sources::kraken::KrakenClient;
 use portfolio_sources::nbp::NbpClient;
@@ -37,7 +39,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     let factor = match args.next() {
         Some(s) => s.parse::<Decimal>()?,
-        None => Decimal::ONE,
+        None => {
+            let path =
+                std::env::var("PORTFOLIO_CONFIG").unwrap_or_else(|_| "config.toml".to_owned());
+            let text = std::fs::read_to_string(&path)
+                .map_err(|e| format!("cannot read config {path}: {e}"))?;
+            Config::from_toml(&text)?.gold_buyback_factor()
+        }
     };
     let db_url =
         std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned());

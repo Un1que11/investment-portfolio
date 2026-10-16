@@ -2,6 +2,7 @@
 //!
 //! This crate has no I/O: everything here is pure and unit-tested.
 
+pub mod config;
 pub mod fx;
 pub mod gold;
 pub mod pnl;
