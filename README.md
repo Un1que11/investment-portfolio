@@ -96,10 +96,25 @@ Holdings, net contributions and value in PLN on a date, from everything imported
 cargo run -p portfolio-sources --example portfolio -- 2026-10-14 0.95
 ```
 
-(arguments: date, default today; gold buyback factor, default 1 until `config.toml`). Net
+(arguments: date, default today; gold buyback factor, default from `config.toml`). Net
 contributions are money put in from outside, at the NBP rate of each flow's date: deposits minus
 withdrawals for XTB and Kraken, coin purchases for gold. Value is every position at that day's
 price plus the cash left in each account; positions without a price are listed, not guessed.
+
+## Configuration
+
+Settings live in `config.toml` at the repository root (another file can be named with
+`PORTFOLIO_CONFIG`), parsed and validated by `portfolio_core::config::Config`:
+
+- `[targets]`: target allocation in percent (`vwce`, `crypto`, `gold`), adding up to exactly 100;
+  `[targets.crypto_split]` splits the crypto share between `btc` and `eth`, also adding up to 100.
+- `[ikze.limits]`: the IKZE contribution limit in PLN per year (`2026 = "11304.00"`).
+- `[tax] rate_percent`: the income tax rate used to estimate the IKZE deduction (12 or 32).
+- `[gold] buyback_factor`: the share of melt value a dealer pays for a coin (above 0, at most 1.5).
+
+Numbers are exact decimals: write whole numbers bare and fractions as strings (`"0.95"`); TOML
+floats are rejected so that nothing passes through binary floating point. Unknown keys, missing
+keys and shares that do not add up are reported as errors.
 
 ## Run
 

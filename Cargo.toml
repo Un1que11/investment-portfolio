@@ -30,6 +30,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 serde = { version = "1", features = ["derive"] }
 # arbitrary_precision keeps JSON numbers as their original text, so rates never pass through f64.
 serde_json = { version = "1", features = ["arbitrary_precision"] }
+toml = "0.9"
 wiremock = "0.6"
 dotenvy = "0.15"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
