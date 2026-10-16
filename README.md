@@ -115,6 +115,11 @@ Settings live in `config.toml` at the repository root (another file can be named
 Numbers are exact decimals: write whole numbers bare and fractions as strings (`"0.95"`); TOML
 floats are rejected so that nothing passes through binary floating point. Unknown keys, missing
 keys and shares that do not add up are reported as errors.
+P&L is value minus net contributions (and as a % of them). Per asset it is value minus cost
+(buys plus that asset's fees) plus sale proceeds and cash dividends, each at the NBP rate of its
+own date, so currency moves since purchase are part of an asset's result; % is P&L over cost.
+What assets do not explain (cash, currency moves on cash, account fees) is shown separately, so
+the parts add up to the total.
 
 ## Run
 

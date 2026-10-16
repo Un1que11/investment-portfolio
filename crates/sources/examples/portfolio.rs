@@ -94,6 +94,29 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     for (account, c) in &r.contributions.by_account {
         println!("  {account}: {} PLN", pln(*c));
     }
+    let pct = |ratio: Option<Decimal>| {
+        ratio.map_or("-".into(), |x| format!("{:.2}%", x * Decimal::ONE_HUNDRED))
+    };
+    match r.pnl.pnl_if_complete() {
+        Some(total) => println!("P&L: {} PLN ({})", pln(total), pct(r.pnl.pnl_ratio())),
+        None => println!(
+            "P&L: not available, prices missing for {}",
+            r.valuation.missing.join(", ")
+        ),
+    }
+    for (asset, a) in &r.pnl.by_asset {
+        let p = a
+            .pnl()
+            .map_or("no price".into(), |v| format!("{} PLN", pln(v)));
+        println!(
+            "  {asset:<11} cost {:>10}  P&L {p:>14} ({})",
+            pln(a.cost),
+            pct(a.pnl_ratio())
+        );
+    }
+    if let Some(other) = r.pnl.other() {
+        println!("  cash, FX on cash, account fees: {} PLN", pln(other));
+    }
     for p in &r.problems {
         println!("  note: {p}");
     }

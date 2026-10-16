@@ -197,12 +197,15 @@ async fn kraken_mapping_feeds_contributions_in_eur() {
     let ledger = load_ledger(&pool).await.unwrap();
 
     let req = requirements(&ledger, d("2026-01-31"));
-    // Deposits on 1, 2 and 5 Jan (synthetic fixture) need EUR rates; EUR cash needs one too.
+    // EUR rates are needed on every day with a non-PLN flow: deposits (1, 2, 5 Jan) for
+    // contributions and purchases and their fees (3, 4, 5 Jan) for P&L. EUR cash needs one too.
     assert_eq!(
         req.flow_rates,
         BTreeSet::from([
             ("EUR".into(), d("2026-01-01")),
             ("EUR".into(), d("2026-01-02")),
+            ("EUR".into(), d("2026-01-03")),
+            ("EUR".into(), d("2026-01-04")),
             ("EUR".into(), d("2026-01-05")),
         ])
     );
@@ -345,6 +348,17 @@ async fn live_sources_value_the_portfolio() {
         r.valuation.total,
         dec!(637.13120796) + dec!(1557.73058) + dec!(75.61138) + dec!(300)
     );
+    // BTC P&L: cost (180 + 2.70) EUR x 4.3806 (NBP 13 Oct) = 800.33562; value 637.13120796
+    // -> -163.20441204. Gold: 1557.73058 - 1600 = -42.26942. VWCE has no price: unknown.
+    let btc = &r.pnl.by_asset["BTC"];
+    assert_eq!(btc.cost, dec!(800.335620));
+    assert_eq!(btc.pnl(), Some(dec!(-163.20441204)));
+    assert_eq!(r.pnl.by_asset[GOLD_COINS].pnl(), Some(dec!(-42.26942)));
+    assert_eq!(r.pnl.by_asset["VWCE"].pnl(), None);
+    assert!(!r.pnl.complete);
+    assert_eq!(r.pnl.pnl(), r.valuation.total - dec!(3477.7800));
+    // VWCE is unpriced, so the portfolio P&L is not offered as a result.
+    assert_eq!((r.pnl.pnl_if_complete(), r.pnl.pnl_ratio()), (None, None));
 }
 
 #[tokio::test]
@@ -380,5 +394,6 @@ async fn fetch_inputs_records_problems_per_value() {
         BTreeMap::from([("BTC".into(), None)])
     );
     assert_eq!(inputs.cash_rates, BTreeMap::from([("EUR".into(), None)]));
-    assert_eq!(inputs.problems.len(), 3, "{:?}", inputs.problems);
+    // BTC price, EUR cash rate, and EUR rates for the deposit (12 Oct) and purchase (13 Oct).
+    assert_eq!(inputs.problems.len(), 4, "{:?}", inputs.problems);
 }
