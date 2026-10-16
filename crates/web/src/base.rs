@@ -91,6 +91,15 @@ pub enum Page {
     Components,
 }
 
+const ALL_PAGES: [Page; 6] = [
+    Page::Overview,
+    Page::Allocation,
+    Page::Ikze,
+    Page::Gold,
+    Page::Import,
+    Page::Components,
+];
+
 const NAV: [Page; 5] = [
     Page::Overview,
     Page::Allocation,
@@ -269,10 +278,14 @@ pub struct ThemeForm {
     pub next: String,
 }
 
-/// A local path to go back to; anything else (another host, `//host`, `/\host`) goes to `/`.
-pub fn safe_next(next: &str) -> &str {
-    let local = next.starts_with('/') && !next.starts_with("//") && !next.starts_with("/\\");
-    if local { next } else { "/" }
+/// Where the toggle goes back to: one of the app's own pages (the form only sends
+/// `Shell::path`). Anything else, such as another host, goes to `/`.
+pub fn safe_next(next: &str) -> &'static str {
+    ALL_PAGES
+        .iter()
+        .map(|p| p.path())
+        .find(|path| *path == next)
+        .unwrap_or("/")
 }
 
 /// Saves the chosen theme in the cookie and goes back to the page the toggle was on.
@@ -538,12 +551,15 @@ mod tests {
     }
 
     #[test]
-    fn only_local_paths_are_returned_to() {
+    fn only_the_apps_own_pages_are_returned_to() {
         assert_eq!(safe_next("/gold"), "/gold");
         assert_eq!(safe_next(""), "/");
         assert_eq!(safe_next("https://example.com"), "/");
         assert_eq!(safe_next("//example.com"), "/");
         assert_eq!(safe_next("/\\example.com"), "/");
+        assert_eq!(safe_next("/\t/example.com"), "/");
+        assert_eq!(safe_next("/gold?x=1"), "/");
+        assert_eq!(safe_next("/components"), "/components");
     }
 
     #[test]
