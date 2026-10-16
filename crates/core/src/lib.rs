@@ -8,6 +8,7 @@ pub mod benchmark;
 pub mod config;
 pub mod fx;
 pub mod gold;
+pub mod history;
 pub mod ikze;
 pub mod pnl;
 pub mod portfolio;

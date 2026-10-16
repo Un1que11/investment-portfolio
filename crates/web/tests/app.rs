@@ -4,12 +4,14 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Utc};
 use http_body_util::BodyExt;
 use portfolio_db::gold::{NewCoin, add_coin, list_coins};
 use portfolio_db::open_in_memory;
+use portfolio_sources::kraken::KrakenClient;
+use portfolio_sources::nbp::NbpClient;
 use portfolio_web::gold::{CoinForm, FieldErrors, parse_form};
-use portfolio_web::{AppState, app};
+use portfolio_web::{AppState, Market, app};
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 use tower::ServiceExt;
@@ -26,9 +28,18 @@ const TODAY: &str = "2026-10-15";
 
 async fn setup() -> (Router, SqlitePool) {
     let pool = open_in_memory().await.unwrap();
+    // The gold page asks no price source: nothing listens on the discard port.
+    let market = Market {
+        nbp: NbpClient::with_base_url("http://127.0.0.1:9").unwrap(),
+        kraken: KrakenClient::with_base_url("http://127.0.0.1:9").unwrap(),
+        alphavantage: None,
+        gold_buyback_factor: Decimal::ONE,
+    };
     let state = AppState {
         pool: pool.clone(),
+        market: Arc::new(market),
         today: Arc::new(|| NaiveDate::from_str(TODAY).unwrap()),
+        now: Arc::new(Utc::now),
     };
     (app(state), pool)
 }
@@ -157,11 +168,10 @@ async fn health_and_root() {
     let (router, _) = setup().await;
 
     assert_eq!(send(&router, get("/health")).await.1, "ok");
-    let (status, _, location) = send(&router, get("/")).await;
-    assert_eq!(
-        (status, location.as_deref()),
-        (StatusCode::SEE_OTHER, Some("/gold"))
-    );
+    // An empty portfolio needs no price: the home page renders without any source.
+    let (status, body, _) = send(&router, get("/")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("No contributions yet"), "{body}");
     assert_eq!(send(&router, get("/nope")).await.0, StatusCode::NOT_FOUND);
 }
 
