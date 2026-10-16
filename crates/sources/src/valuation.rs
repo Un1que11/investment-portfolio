@@ -197,7 +197,7 @@ pub struct Sources<'a> {
     pub gold_buyback_factor: Decimal,
 }
 
-fn instrument(asset: &str) -> Option<Instrument> {
+pub(crate) fn instrument(asset: &str) -> Option<Instrument> {
     [VWCE, BTC, ETH].into_iter().find(|i| i.symbol == asset)
 }
 
@@ -257,17 +257,31 @@ pub async fn fetch_inputs(req: &Requirements, date: NaiveDate, s: &Sources<'_>) 
     inputs
 }
 
-/// VWCE in PLN on each benchmark day, from the price cache. Days older than the cached closes
-/// (the daily series covers ~100 trading days) make it fetch the weekly history once
-/// ([`crate::prices::backfill_weekly`], one or two requests) and try them again; once stored,
-/// later reports need no such request. Once Alpha Vantage itself fails (down, rate limit), the
-/// remaining days are not asked for: each would retry the fetch and spend another of the ~25
-/// requests a day. Failures are summed up in one problem, since there can be many days. Without
-/// an Alpha Vantage key the prices are missing and the benchmark says so.
+/// VWCE in PLN on each benchmark day (see [`vwce_prices`]).
 async fn benchmark_prices(days: &BTreeSet<NaiveDate>, s: &Sources<'_>, inputs: &mut Inputs) {
+    let (prices, problem) = vwce_prices(days, s).await;
+    inputs.vwce_prices = prices;
+    if let Some(p) = problem {
+        inputs.problems.push(format!("VWCE benchmark: {p}"));
+    }
+}
+
+/// VWCE in PLN on each of `days`, from the price cache, with one line describing the days that
+/// have no price (None when every day has one).
+///
+/// Days older than the cached closes (the daily series covers ~100 trading days) make it fetch
+/// the weekly history once ([`crate::prices::backfill_weekly`], one or two requests) and try them
+/// again; once stored, later lookups need no such request. Once Alpha Vantage itself fails (down,
+/// rate limit), the remaining days are not asked for: each would retry the fetch and spend
+/// another of the ~25 requests a day. Without an Alpha Vantage key every price is missing.
+pub(crate) async fn vwce_prices(
+    days: &BTreeSet<NaiveDate>,
+    s: &Sources<'_>,
+) -> (BTreeMap<NaiveDate, Option<Decimal>>, Option<String>) {
+    let mut prices: BTreeMap<NaiveDate, Option<Decimal>> = BTreeMap::new();
     let Some(av) = s.alphavantage else {
-        inputs.vwce_prices.extend(days.iter().map(|d| (*d, None)));
-        return;
+        prices.extend(days.iter().map(|d| (*d, None)));
+        return (prices, None);
     };
     let price = |day: NaiveDate| value_in_pln(s.pool, av, s.nbp, &VWCE, day, s.clock);
     let mut errors: BTreeMap<NaiveDate, String> = BTreeMap::new();
@@ -287,7 +301,7 @@ async fn benchmark_prices(days: &BTreeSet<NaiveDate>, s: &Sources<'_>, inputs: &
                 }
             }
         }
-        inputs.vwce_prices.insert(*day, close);
+        prices.insert(*day, close);
     }
     let mut backfill_failed = None;
     if !before_cache.is_empty() && !provider_failed {
@@ -296,7 +310,7 @@ async fn benchmark_prices(days: &BTreeSet<NaiveDate>, s: &Sources<'_>, inputs: &
                 for day in before_cache {
                     match price(day).await {
                         Ok(v) => {
-                            inputs.vwce_prices.insert(day, Some(v.close_pln));
+                            prices.insert(day, Some(v.close_pln));
                             errors.remove(&day);
                         }
                         Err(e) => {
@@ -308,14 +322,15 @@ async fn benchmark_prices(days: &BTreeSet<NaiveDate>, s: &Sources<'_>, inputs: &
             Err(e) => backfill_failed = Some(e.to_string()),
         }
     }
-    let failed = inputs.vwce_prices.values().filter(|p| p.is_none()).count();
-    if let Some((day, e)) = errors.first_key_value() {
+    let failed = prices.values().filter(|p| p.is_none()).count();
+    let problem = errors.first_key_value().map(|(day, e)| {
         let backfill = backfill_failed.map_or(String::new(), |e| format!("; weekly history: {e}"));
-        inputs.problems.push(format!(
-            "VWCE benchmark: no price for {failed} of {} days (first {day}: {e}){backfill}",
+        format!(
+            "no price for {failed} of {} days (first {day}: {e}){backfill}",
             days.len()
-        ));
-    }
+        )
+    });
+    (prices, problem)
 }
 
 async fn gold_value(date: NaiveDate, s: &Sources<'_>) -> Result<Decimal, String> {

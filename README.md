@@ -189,9 +189,18 @@ PORTFOLIO_ADDR=127.0.0.1:8080 cargo run -p portfolio-web
 Health check: `curl http://127.0.0.1:3000/health` returns `ok`.
 
 The database defaults to `portfolio.db` in the working directory; set `PORTFOLIO_DB_URL`
-(e.g. `sqlite:///Users/me/portfolio/portfolio.db`) to keep it elsewhere.
+(e.g. `sqlite:///Users/me/portfolio/portfolio.db`) to keep it elsewhere. The gold buyback factor
+comes from `config.toml` (or the file named by `PORTFOLIO_CONFIG`), and `ALPHAVANTAGE_API_KEY`
+(environment or `.env`) prices VWCE; without it VWCE shows as unpriced.
 
 Pages:
+- `/`: the portfolio today: value, net contributions, P&L (PLN and %) and XIRR since the first
+  contribution. When a position or cash currency has no price, the value, P&L and XIRR say
+  "not available" and name what is missing, instead of showing an understated total. Below it,
+  a chart (uPlot) of value against net contributions at the first contribution, every month end
+  since, and today. It loads after the page (htmx), reads prices through the same caches as the
+  report, and leaves a gap on days without a complete value. A provider that fails is asked
+  only once per chart.
 - `/gold`: add, list and delete physical gold coins (purchase date, price in PLN, fine gold
   weight, optional manual quote and label). Amounts may be typed with a decimal comma.
 

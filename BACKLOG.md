@@ -27,7 +27,7 @@
 - [x] P19. Benchmark "everything in VWCE".
 
 ## Phase 4 — interface
-- [ ] P20. Home page: total, P&L, XIRR, chart of value vs contributions.
+- [x] P20. Home page: total, P&L, XIRR, chart of value vs contributions.
 - [ ] P21. Asset cards with the "earned more / less" ranking.
 - [ ] P22. Allocation block: actual vs target, deviations, top-up calculator.
 - [ ] P23. IKZE block with a limit progress bar and a reminder in December.
