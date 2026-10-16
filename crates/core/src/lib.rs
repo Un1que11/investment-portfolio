@@ -4,6 +4,7 @@
 
 pub mod allocation;
 pub mod attribution;
+pub mod benchmark;
 pub mod config;
 pub mod fx;
 pub mod gold;

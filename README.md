@@ -119,6 +119,16 @@ For the portfolio the flows are the contributions; per asset, buys and fees, sal
 dividends. Assets held only from staking rewards cost nothing and have no XIRR. Over a short
 period the annualised figure exaggerates, so the report prints the date it starts from.
 
+The benchmark answers "what if every contribution had gone into VWCE instead": the same net
+contributions, each on its own date, buy (or, for withdrawals, sell) VWCE units at that day's
+price in PLN (the Xetra close of the day or the last trading day before it, at the NBP rate of
+that close's day), and the units are valued on the report date. It shows the benchmark's value,
+P&L and XIRR, and how far the portfolio is ahead of it (negative: behind). It assumes no fees,
+fractional units and no cash waiting to be invested. For contribution dates older than the
+~100 days of daily closes, the first such report fetches VWCE's weekly history once (one or two
+Alpha Vantage requests) and stores it; those dates then use the week-end close before them. A
+withdrawal larger than the benchmark was worth on its day is reported instead of a result.
+
 The allocation compares the assets' values with the targets in `config.toml`: each class
 (VWCE, crypto, gold) as a share of the three together, and BTC and ETH as shares of the crypto.
 Cash left in accounts belongs to no class and is left out. Deviations are actual minus target,

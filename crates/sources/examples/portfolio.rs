@@ -1,6 +1,7 @@
-//! Print holdings, net contributions, value, P&L, each asset's contribution to it, XIRR and the
-//! deviation from the target allocation in PLN for a date (default: today), the year's IKZE
-//! contributions against the limit, and optionally how to split a top-up of N PLN:
+//! Print holdings, net contributions, value, P&L, each asset's contribution to it, XIRR, the
+//! "everything in VWCE" benchmark and the deviation from the target allocation in PLN for a date
+//! (default: today), the year's IKZE contributions against the limit, and optionally how to split
+//! a top-up of N PLN:
 //!
 //!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor] [N]
 //!
@@ -144,6 +145,26 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("XIRR since {since}: {}", annual(&r.xirr.portfolio));
     for (asset, x) in &r.xirr.by_asset {
         println!("  {asset:<11} {}", annual(x));
+    }
+    match &r.benchmark {
+        Ok(b) => {
+            println!(
+                "Everything in VWCE: {} units worth {} PLN, P&L {} PLN ({}), XIRR {}",
+                b.units.round_dp(6),
+                pln(b.value),
+                pln(b.pnl()),
+                pct(b.pnl_ratio()),
+                annual(&b.xirr)
+            );
+            match b.outperformance(&r.pnl) {
+                Some(x) if x < Decimal::ZERO => {
+                    println!("  the portfolio is {} PLN behind it", pln(-x))
+                }
+                Some(x) => println!("  the portfolio is {} PLN ahead of it", pln(x)),
+                None => println!("  no comparison: the portfolio's value is incomplete"),
+            }
+        }
+        Err(e) => println!("Everything in VWCE: not available ({e})"),
     }
     let points = |x: Decimal| format!("{:+.2} pp", x * Decimal::ONE_HUNDRED);
     let line = |name: &str, d: &Deviation| {

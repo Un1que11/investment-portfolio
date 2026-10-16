@@ -1,6 +1,7 @@
 //! The whole portfolio on a date: holdings, net contributions, value, P&L, each asset's
-//! contribution to it, and XIRR in PLN; and, given the config, how far it is from the targets and
-//! where the year's IKZE contributions stand against the limit.
+//! contribution to it, XIRR, and what the same contributions would be worth in VWCE alone, in PLN;
+//! and, given the config, how far it is from the targets and where the year's IKZE contributions
+//! stand against the limit.
 //!
 //! Three steps, so the arithmetic stays testable without the network:
 //! 1. [`requirements`] lists the prices and rates the ledger needs for the date (pure);
@@ -12,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use chrono::NaiveDate;
 use portfolio_core::allocation::{Allocation, AllocationError, Sleeve, allocation, sleeve_values};
 use portfolio_core::attribution::{ProfitAttribution, profit_attribution};
+use portfolio_core::benchmark::{Benchmark, BenchmarkError, price_days, vwce_benchmark};
 use portfolio_core::config::Config;
 use portfolio_core::ikze::{IkzeError, IkzeFlows, IkzeYear, ikze_flows, ikze_year};
 use portfolio_core::pnl::{PortfolioPnl, asset_flows, portfolio_pnl};
@@ -20,7 +22,7 @@ use portfolio_core::portfolio::{
     value,
 };
 use portfolio_core::topup::{TopUp, TopUpError, top_up};
-use portfolio_core::xirr::{PortfolioXirr, portfolio_xirr};
+use portfolio_core::xirr::{PortfolioXirr, contribution_flows, portfolio_xirr};
 use portfolio_db::gold as coins;
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
@@ -30,7 +32,7 @@ use crate::fx::rate_on_day;
 use crate::gold::coin_value_on_day;
 use crate::kraken::KrakenClient;
 use crate::nbp::NbpClient;
-use crate::prices::{BTC, Clock, ETH, Instrument, VWCE, value_in_pln};
+use crate::prices::{BTC, Clock, ETH, Instrument, PriceError, VWCE, backfill_weekly, value_in_pln};
 
 /// Asset symbol of physical gold coins (valued coin by coin).
 pub const GOLD_COINS: &str = portfolio_db::gold::ASSET_SYMBOL;
@@ -44,6 +46,8 @@ pub struct Requirements {
     /// (currency, date) of every non-PLN flow up to the date that P&L needs: contributions
     /// and asset buys, sells, fees and dividends.
     pub flow_rates: BTreeSet<(String, NaiveDate)>,
+    /// Days that need a VWCE price for the benchmark: every contribution's date and the date.
+    pub benchmark_days: BTreeSet<NaiveDate>,
 }
 
 pub fn requirements(ledger: &[LedgerTx], date: NaiveDate) -> Requirements {
@@ -62,6 +66,9 @@ pub fn requirements(ledger: &[LedgerTx], date: NaiveDate) -> Requirements {
         flow_rates.insert((currency.to_owned(), day));
         Some(Decimal::ONE)
     });
+    // Dates do not depend on rates, so any rate lists them all.
+    let contributions = contribution_flows(ledger, date, |_, _| Some(Decimal::ONE))
+        .expect("a rate is given for every currency");
     Requirements {
         assets: holdings.assets.clone(),
         cash_currencies: holdings
@@ -71,6 +78,7 @@ pub fn requirements(ledger: &[LedgerTx], date: NaiveDate) -> Requirements {
             .filter(|c| c != "PLN")
             .collect(),
         flow_rates,
+        benchmark_days: price_days(&contributions, date),
     }
 }
 
@@ -83,6 +91,8 @@ pub struct Inputs {
     pub cash_rates: BTreeMap<String, Option<Decimal>>,
     /// (currency, date) -> PLN per unit, for contribution flows.
     pub flow_rates: BTreeMap<(String, NaiveDate), Option<Decimal>>,
+    /// Day -> PLN per VWCE unit, for the benchmark.
+    pub vwce_prices: BTreeMap<NaiveDate, Option<Decimal>>,
     /// Why values are missing, for the report.
     pub problems: Vec<String>,
 }
@@ -99,6 +109,8 @@ pub struct PortfolioReport {
     pub xirr: PortfolioXirr,
     /// IKZE deposits and withdrawals in the report date's calendar year, up to the date.
     pub ikze_flows: IkzeFlows,
+    /// The same contributions, each put into VWCE on its own date.
+    pub benchmark: Result<Benchmark, BenchmarkError>,
     pub problems: Vec<String>,
 }
 
@@ -157,6 +169,9 @@ pub fn report(
     // Needs no rates beyond the P&L's: the same rows, dated instead of summed.
     let xirr = portfolio_xirr(ledger, date, rate, &pnl)?;
     let ikze_flows = ikze_flows(ledger, date, rate)?;
+    let benchmark = vwce_benchmark(&contribution_flows(ledger, date, rate)?, date, |day| {
+        inputs.vwce_prices.get(&day).copied().flatten()
+    });
     Ok(PortfolioReport {
         date,
         holdings,
@@ -166,6 +181,7 @@ pub fn report(
         attribution,
         xirr,
         ikze_flows,
+        benchmark,
         problems: inputs.problems.clone(),
     })
 }
@@ -237,7 +253,69 @@ pub async fn fetch_inputs(req: &Requirements, date: NaiveDate, s: &Sources<'_>) 
             .flow_rates
             .insert((currency.clone(), *day), rate.ok().map(|r| r.mid));
     }
+    benchmark_prices(&req.benchmark_days, s, &mut inputs).await;
     inputs
+}
+
+/// VWCE in PLN on each benchmark day, from the price cache. Days older than the cached closes
+/// (the daily series covers ~100 trading days) make it fetch the weekly history once
+/// ([`crate::prices::backfill_weekly`], one or two requests) and try them again; once stored,
+/// later reports need no such request. Once Alpha Vantage itself fails (down, rate limit), the
+/// remaining days are not asked for: each would retry the fetch and spend another of the ~25
+/// requests a day. Failures are summed up in one problem, since there can be many days. Without
+/// an Alpha Vantage key the prices are missing and the benchmark says so.
+async fn benchmark_prices(days: &BTreeSet<NaiveDate>, s: &Sources<'_>, inputs: &mut Inputs) {
+    let Some(av) = s.alphavantage else {
+        inputs.vwce_prices.extend(days.iter().map(|d| (*d, None)));
+        return;
+    };
+    let price = |day: NaiveDate| value_in_pln(s.pool, av, s.nbp, &VWCE, day, s.clock);
+    let mut errors: BTreeMap<NaiveDate, String> = BTreeMap::new();
+    let mut provider_failed = false;
+    let mut before_cache = Vec::new();
+    for day in days {
+        let mut close = None;
+        if !provider_failed {
+            match price(*day).await {
+                Ok(v) => close = Some(v.close_pln),
+                Err(e) => {
+                    provider_failed = matches!(e, PriceError::Provider(_));
+                    if matches!(e, PriceError::NoPrice(..)) {
+                        before_cache.push(*day);
+                    }
+                    errors.insert(*day, e.to_string());
+                }
+            }
+        }
+        inputs.vwce_prices.insert(*day, close);
+    }
+    let mut backfill_failed = None;
+    if !before_cache.is_empty() && !provider_failed {
+        match backfill_weekly(s.pool, av, &VWCE, s.clock).await {
+            Ok(_) => {
+                for day in before_cache {
+                    match price(day).await {
+                        Ok(v) => {
+                            inputs.vwce_prices.insert(day, Some(v.close_pln));
+                            errors.remove(&day);
+                        }
+                        Err(e) => {
+                            errors.insert(day, e.to_string());
+                        }
+                    }
+                }
+            }
+            Err(e) => backfill_failed = Some(e.to_string()),
+        }
+    }
+    let failed = inputs.vwce_prices.values().filter(|p| p.is_none()).count();
+    if let Some((day, e)) = errors.first_key_value() {
+        let backfill = backfill_failed.map_or(String::new(), |e| format!("; weekly history: {e}"));
+        inputs.problems.push(format!(
+            "VWCE benchmark: no price for {failed} of {} days (first {day}: {e}){backfill}",
+            days.len()
+        ));
+    }
 }
 
 async fn gold_value(date: NaiveDate, s: &Sources<'_>) -> Result<Decimal, String> {
