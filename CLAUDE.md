@@ -45,11 +45,11 @@ Targets live in `config.toml`, not in code.
 
 ## Work modes: day and night
 - **Day (manual, Misha starts it):** heavy backlog tasks, one at a time, following the rules above.
-- **Night (scheduled task):** light work only:
-  1. Review open PRs: leave a comment with bugs found, risks and missing tests.
-  2. Bug fixes: if an open PR has failing checks or the review found an obvious bug, fix it with a commit on the same branch.
-  3. If there are no open PRs, or they are fine, take the first open task marked `[light]` in BACKLOG.md.
-  4. Do not start heavy tasks (without `[light]`) at night. If there are no light tasks, do nothing and report that briefly.
+- **Night (three scheduled tasks, in this order):**
+  1. **Review & refactor:** review every open PR (bugs, risks, missing tests, deviations from these rules; never approve or merge) and fix failing checks or obvious small bugs with a commit on the same branch; large rewrites are described in the review, not done. If no open PR needs fixing, self-review `main`: a real bug goes on `fix/<slug>` with a test that fails without the fix; otherwise at most one small `refactor/<slug>` PR (no behaviour change, tests green). It never starts backlog tasks.
+  2. **Implement:** takes the first open task in BACKLOG.md that is not `BLOCKED`, light or heavy, following the day rules (branch `feat/<id>-<slug>`, tests, checks green, tick `[x]` in the same PR). It skips a task that already has an open PR or depends on work in an unmerged PR. A heavy task that cannot be finished cleanly goes up as a draft PR listing what is left. Missing information: mark the task `BLOCKED: <question>` and take the next one.
+  3. **Backlog ideas:** proposes 1–5 ideas, each with a one-line reason, only through a PR (`docs/backlog-ideas-<YYYY-MM-DD>`) that adds them to the `## Ideas (proposed by night job)` section at the end of BACKLOG.md. Ideas are never tagged `[light]`, never inserted into the numbered phases and never duplicate existing tasks or ideas; Misha moves them into the backlog himself. At most one ideas PR is open at a time: new ideas are added to it, or wait until it is merged or closed. It changes no code.
+- **Limits:** each task opens at most one new PR per night. Implement opens no new PR while three or more of its PRs are waiting for Misha.
 - Misha sets the `[light]` tag himself; at night, never add or remove it.
 
 ## Language
