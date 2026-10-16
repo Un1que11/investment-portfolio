@@ -107,6 +107,12 @@ own date, so currency moves since purchase are part of an asset's result; % is P
 What assets do not explain (cash, currency moves on cash, account fees) is shown separately, so
 the parts add up to the total.
 
+XIRR is the annual return that accounts for when money went in: the same flows, dated (money
+put in negative, the value on the date as the last flow), solved Actual/365 like Excel's XIRR.
+For the portfolio the flows are the contributions; per asset, buys and fees, sales and cash
+dividends. Assets held only from staking rewards cost nothing and have no XIRR. Over a short
+period the annualised figure exaggerates, so the report prints the date it starts from.
+
 ## Run
 
 ```bash

@@ -4,6 +4,7 @@ use std::str::FromStr;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use portfolio_core::AssetClass;
 use portfolio_core::portfolio::{AccountKind, TxKind};
+use portfolio_core::xirr::XirrError;
 use portfolio_db::gold::{NewCoin, add_coin};
 use portfolio_db::open_in_memory;
 use portfolio_db::transactions::{
@@ -359,6 +360,12 @@ async fn live_sources_value_the_portfolio() {
     assert_eq!(r.pnl.pnl(), r.valuation.total - dec!(3477.7800));
     // VWCE is unpriced, so the portfolio P&L is not offered as a result.
     assert_eq!((r.pnl.pnl_if_complete(), r.pnl.pnl_ratio()), (None, None));
+    // XIRR: the same gaps. Gold has one flow in and its value, 13 days apart:
+    // (1557.73058 / 1600)^(365 / 13) - 1 = -52.84% a year (a short period exaggerates).
+    assert_eq!(r.xirr.first_flow, Some(d("2026-10-01")));
+    assert_eq!(r.xirr.portfolio, Err(XirrError::MissingValue));
+    assert_eq!(r.xirr.by_asset["VWCE"], Err(XirrError::MissingValue));
+    assert_eq!(r.xirr.by_asset[GOLD_COINS], Ok(dec!(-0.528446)));
 }
 
 #[tokio::test]

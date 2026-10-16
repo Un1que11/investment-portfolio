@@ -1,4 +1,4 @@
-//! The whole portfolio on a date: holdings, net contributions and value in PLN.
+//! The whole portfolio on a date: holdings, net contributions, value, P&L and XIRR in PLN.
 //!
 //! Three steps, so the arithmetic stays testable without the network:
 //! 1. [`requirements`] lists the prices and rates the ledger needs for the date (pure);
@@ -13,6 +13,7 @@ use portfolio_core::portfolio::{
     Contributions, Holdings, LedgerTx, MissingRate, Valuation, holdings_on, net_contributions_on,
     value,
 };
+use portfolio_core::xirr::{PortfolioXirr, portfolio_xirr};
 use portfolio_db::gold as coins;
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
@@ -82,6 +83,7 @@ pub struct PortfolioReport {
     pub contributions: Contributions,
     pub valuation: Valuation,
     pub pnl: PortfolioPnl,
+    pub xirr: PortfolioXirr,
     pub problems: Vec<String>,
 }
 
@@ -106,12 +108,15 @@ pub fn report(
         |currency| inputs.cash_rates.get(currency).copied().flatten(),
     );
     let pnl = portfolio_pnl(flows, &valuation, &contributions);
+    // Needs no rates beyond the P&L's: the same rows, dated instead of summed.
+    let xirr = portfolio_xirr(ledger, date, rate, &pnl)?;
     Ok(PortfolioReport {
         date,
         holdings,
         contributions,
         valuation,
         pnl,
+        xirr,
         problems: inputs.problems.clone(),
     })
 }

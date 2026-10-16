@@ -151,25 +151,42 @@ pub fn net_contributions_on(
 ) -> Result<Contributions, MissingRate> {
     let mut c = Contributions::default();
     for tx in txs.iter().filter(|t| t.date <= date) {
-        let sign = match (tx.account_kind, tx.kind) {
-            (AccountKind::Funded, TxKind::Deposit) | (AccountKind::Manual, TxKind::Buy) => 1,
-            (AccountKind::Funded, TxKind::Withdrawal) | (AccountKind::Manual, TxKind::Sell) => -1,
-            _ => continue,
+        let Some(sign) = contribution_sign(tx) else {
+            continue;
         };
-        let pln = if tx.currency == "PLN" {
-            tx.amount
-        } else {
-            let r = rate(&tx.currency, tx.date).ok_or_else(|| MissingRate {
-                currency: tx.currency.clone(),
-                date: tx.date,
-            })?;
-            tx.amount * r
-        };
-        let signed = if sign > 0 { pln } else { -pln };
+        let signed = sign * in_pln(tx, &mut rate)?;
         c.total += signed;
         *c.by_account.entry(tx.account.clone()).or_default() += signed;
     }
     Ok(c)
+}
+
+/// 1 for money put into the portfolio, -1 for money taken out, None for anything else.
+pub(crate) fn contribution_sign(tx: &LedgerTx) -> Option<Decimal> {
+    match (tx.account_kind, tx.kind) {
+        (AccountKind::Funded, TxKind::Deposit) | (AccountKind::Manual, TxKind::Buy) => {
+            Some(Decimal::ONE)
+        }
+        (AccountKind::Funded, TxKind::Withdrawal) | (AccountKind::Manual, TxKind::Sell) => {
+            Some(Decimal::NEGATIVE_ONE)
+        }
+        _ => None,
+    }
+}
+
+/// The row's amount in PLN at its own date's rate.
+pub(crate) fn in_pln(
+    tx: &LedgerTx,
+    rate: &mut impl FnMut(&str, NaiveDate) -> Option<Decimal>,
+) -> Result<Decimal, MissingRate> {
+    if tx.currency == "PLN" {
+        return Ok(tx.amount);
+    }
+    let r = rate(&tx.currency, tx.date).ok_or_else(|| MissingRate {
+        currency: tx.currency.clone(),
+        date: tx.date,
+    })?;
+    Ok(tx.amount * r)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

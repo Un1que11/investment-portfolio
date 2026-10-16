@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 
-use crate::portfolio::{Contributions, LedgerTx, MissingRate, TxKind, Valuation};
+use crate::portfolio::{Contributions, LedgerTx, MissingRate, TxKind, Valuation, in_pln};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AssetPnl {
@@ -90,29 +90,42 @@ pub fn asset_flows(
     let mut out: BTreeMap<String, AssetPnl> = BTreeMap::new();
     for tx in txs.iter().filter(|t| t.date <= date) {
         let Some(asset) = &tx.asset else { continue };
-        if tx.currency == *asset {
-            // In kind: make sure the asset appears (it may have no other rows).
-            out.entry(asset.clone()).or_default();
-            continue;
-        }
-        let pln = if tx.currency == "PLN" {
-            tx.amount
-        } else {
-            tx.amount
-                * rate(&tx.currency, tx.date).ok_or_else(|| MissingRate {
-                    currency: tx.currency.clone(),
-                    date: tx.date,
-                })?
-        };
+        // In-kind rows still make the asset appear (it may have no other rows).
         let entry = out.entry(asset.clone()).or_default();
-        match tx.kind {
-            TxKind::Buy | TxKind::Fee => entry.cost += pln,
-            TxKind::Sell => entry.proceeds += pln,
-            TxKind::Dividend => entry.income += pln,
-            TxKind::Deposit | TxKind::Withdrawal => {}
+        let Some(flow) = asset_flow(tx) else { continue };
+        let pln = in_pln(tx, &mut rate)?;
+        match flow {
+            AssetFlow::Cost => entry.cost += pln,
+            AssetFlow::Proceeds => entry.proceeds += pln,
+            AssetFlow::Income => entry.income += pln,
         }
     }
     Ok(out)
+}
+
+/// What an asset row means in money terms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AssetFlow {
+    /// Buy or fee: paid for the asset.
+    Cost,
+    /// Sale.
+    Proceeds,
+    /// Cash dividend.
+    Income,
+}
+
+/// The money flow of an asset row; None for rows without one (no asset, or in kind).
+pub(crate) fn asset_flow(tx: &LedgerTx) -> Option<AssetFlow> {
+    let asset = tx.asset.as_ref()?;
+    if tx.currency == *asset {
+        return None;
+    }
+    match tx.kind {
+        TxKind::Buy | TxKind::Fee => Some(AssetFlow::Cost),
+        TxKind::Sell => Some(AssetFlow::Proceeds),
+        TxKind::Dividend => Some(AssetFlow::Income),
+        TxKind::Deposit | TxKind::Withdrawal => None,
+    }
 }
 
 /// Combines per-asset flows with the valuation and contributions of the same date.
