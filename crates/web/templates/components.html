@@ -1,0 +1,145 @@
+{% extends "layout.html" %}
+{% import "ui.html" as ui %}
+{% block title %}Components · Portfel{% endblock %}
+{% block content %}
+<header style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px">
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em">Components</h1>
+    <p style="margin: 0; font-size: 13px; color: var(--text-2)">Geist 400/500/600, tabular figures everywhere · one accent · tokens as CSS variables, swapped by <code>data-theme</code></p>
+  </div>
+  <span style="font-size: 12px; color: var(--text-3)">Sample figures from the design, not portfolio data</span>
+</header>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+  <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Tokens</h2>
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px">
+    {%- for t in tokens %}
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <div style="height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var({{ t }})"></div>
+      <div style="font-size: 12px">{{ t }}</div>
+    </div>
+    {%- endfor %}
+  </div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+  <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Type</h2>
+  <div style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: grid; grid-template-columns: 140px 1fr; gap: 14px 24px; align-items: baseline; box-shadow: var(--shadow)">
+    <div style="font-size: 12px; color: var(--text-3)">Hero · 64/500, −3.5%</div>
+    <div class="hero-num" style="font-size: 64px; line-height: 1; font-weight: 500; letter-spacing: -0.035em">{{ hero }}<span style="font-size: 0.45em; font-weight: 400; color: var(--text-2); letter-spacing: 0; margin-left: 10px">zł</span></div>
+    <div style="font-size: 12px; color: var(--text-3)">Figure · 24/500</div>
+    <div style="font-size: 24px; font-weight: 500; letter-spacing: -0.02em">{{ figure }}</div>
+    <div style="font-size: 12px; color: var(--text-3)">Title · 15/600</div>
+    <div style="font-size: 15px; font-weight: 600">Assets</div>
+    <div style="font-size: 12px; color: var(--text-3)">Body · 14/400</div>
+    <div style="font-size: 14px">Moves toward targets with new money only.</div>
+    <div style="font-size: 12px; color: var(--text-3)">Caption · 12/400</div>
+    <div style="font-size: 12px; color: var(--text-3)">{{ shell.sync.long }}</div>
+  </div>
+</section>
+
+<div class="sheet-grid">
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Number tile</h2>
+    {% call ui::tile("XIRR · money-weighted", xirr.text, xirr.tone.color(), "per year, since May 2025") %}{% endcall %}
+    {% call ui::tile("Contributed", contributed, "", "") %}{% endcall %}
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Delta badge — sign + arrow, never colour alone</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+      {% call ui::delta_badge(gain) %}{% endcall %}
+      {% call ui::delta_badge(loss) %}{% endcall %}
+      {% call ui::delta_badge(flat) %}{% endcall %}
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; font-weight: 500">
+      {% call ui::delta_text(gain_percent) %}{% endcall %}
+      {% call ui::delta_text(loss_percent) %}{% endcall %}
+      {% call ui::drift(drift) %}{% endcall %}
+    </div>
+    <p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-3)">Drift from target is neutral grey: being over or under isn’t good or bad.</p>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Progress bar</h2>
+    <div class="card" style="padding: 18px">
+      {% call ui::progress("Example progress", used, limit, used_width, used_now, used_caption) %}{% endcall %}
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Allocation bar — actual over dashed target</h2>
+    <div class="card" style="padding: 18px; display: flex; flex-direction: column; gap: 8px">
+      {% call ui::allocation_bar(bar) %}{% endcall %}
+      <div style="font-size: 12px; color: var(--text-3)">Shades of one hue, stepped in lightness</div>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Asset card</h2>
+    {% call ui::asset_card(card) %}{% endcall %}
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Table rows</h2>
+    <div class="card" style="overflow: hidden; box-shadow: none">
+      <table class="tbl">
+        <thead>
+          <tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col" class="num">Amount</th></tr>
+        </thead>
+        <tbody>
+          {%- for r in rows %}
+          <tr{% if r.muted %} class="muted"{% endif %}>
+            <td>{{ r.date }}</td>
+            <td>{{ r.kind }}{% if r.new %} <span class="chip chip-new" style="margin-left: 6px; height: 20px; font-size: 11px">New</span>{% endif %}</td>
+            <td class="num">{{ r.amount }}</td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Buttons</h2>
+    <div class="card" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 18px; box-shadow: none">
+      <button type="button" class="btn btn-primary">Add 3 operations</button>
+      <button type="button" class="btn btn-secondary ghost">Cancel</button>
+      <button type="button" class="btn btn-link ghost">Plan a top-up</button>
+      <button type="button" class="btn btn-icon ghost" aria-label="Refresh prices"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 11A7.5 7.5 0 1 0 17.3 16.3"/><path d="M19.5 4.5V11H13"/></svg></button>
+      <button type="button" class="btn btn-primary" disabled>Added</button>
+    </div>
+    <div role="group" aria-label="Segmented control example" class="seg">
+      <button type="button" aria-pressed="false">1M</button>
+      <button type="button" aria-pressed="false">6M</button>
+      <button type="button" aria-pressed="false">YTD</button>
+      <button type="button" aria-pressed="false">1Y</button>
+      <button type="button" aria-pressed="true">All</button>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px; grid-column: span 2">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Inputs</h2>
+    <div class="card" style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; padding: 18px; box-shadow: none">
+      {% call ui::amount_field("cs-amt", "Amount", "amount", "2 000") %}{% endcall %}
+      {% call ui::field("cs-text", "Coin", "coin", "1/10 oz coin", None::<String>) %}{% endcall %}
+      <div class="field-wrap">
+        <label for="cs-date" class="field-label">Bought on</label>
+        <input class="field" id="cs-date" type="date" value="2026-10-16">
+      </div>
+      {% call ui::field("cs-err", "Paid", "paid", "abc", Some("Enter an amount like 2 050,00")) %}{% endcall %}
+      <label class="check"><input type="checkbox" checked>Include paused assets</label>
+    </div>
+  </section>
+
+  <section style="display: flex; flex-direction: column; gap: 12px">
+    <h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Status chips</h2>
+    <div class="card" style="display: flex; flex-wrap: wrap; gap: 8px; padding: 18px; box-shadow: none">
+      {% call ui::chip("paused", "Purchases paused") %}{% endcall %}
+      {% call ui::chip("new", "New") %}{% endcall %}
+      {% call ui::chip("added", "Added") %}{% endcall %}
+      {% call ui::chip("stale", "Stale") %}{% endcall %}
+    </div>
+  </section>
+</div>
+{% endblock %}

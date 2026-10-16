@@ -6,7 +6,7 @@ use portfolio_core::price::{DailyClose, PriceQuote};
 use portfolio_db::open_in_memory;
 use portfolio_db::prices::{
     closes_between, ensure_asset, has_close_after, insert_missing_closes, last_fetched_at,
-    quote_for_date, upsert_closes,
+    latest_fetch, quote_for_date, upsert_closes,
 };
 use rust_decimal::Decimal;
 
@@ -143,6 +143,43 @@ async fn has_close_after_and_last_fetched() {
     assert_eq!(
         last_fetched_at(&pool, id, "alphavantage").await.unwrap(),
         Some(at("2026-10-12T18:00:00Z"))
+    );
+}
+
+#[tokio::test]
+async fn latest_fetch_is_the_newest_write_of_any_asset_and_source() {
+    let pool = open_in_memory().await.unwrap();
+    assert_eq!(latest_fetch(&pool).await.unwrap(), None);
+    let vwce = ensure_asset(&pool, "VWCE", "Vanguard", AssetClass::Vwce, "EUR")
+        .await
+        .unwrap();
+    let btc = ensure_asset(&pool, "BTC", "Bitcoin", AssetClass::Crypto, "EUR")
+        .await
+        .unwrap();
+    upsert_closes(
+        &pool,
+        vwce,
+        "EUR",
+        "alphavantage",
+        &[close("2026-10-12", "171.00")],
+        at("2026-10-12T18:00:00Z"),
+    )
+    .await
+    .unwrap();
+    upsert_closes(
+        &pool,
+        btc,
+        "EUR",
+        "kraken",
+        &[close("2026-10-13", "95000")],
+        at("2026-10-14T06:00:00Z"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        latest_fetch(&pool).await.unwrap(),
+        Some(at("2026-10-14T06:00:00Z"))
     );
 }
 

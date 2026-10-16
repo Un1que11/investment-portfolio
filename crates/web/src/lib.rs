@@ -15,6 +15,8 @@ use portfolio_sources::valuation::Sources;
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 
+pub mod base;
+pub mod format;
 pub mod gold;
 
 /// Price sources (read-only) and the settings the valuation needs.
@@ -76,6 +78,7 @@ pub fn app(state: AppState) -> Router {
         .route("/gold", get(gold::show))
         .route("/gold/coins", post(gold::add))
         .route("/gold/coins/{id}/delete", post(gold::delete))
+        .merge(base::routes())
         .with_state(state)
 }
 

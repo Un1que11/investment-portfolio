@@ -13,6 +13,7 @@ use portfolio_db::gold::{self as store, Coin, NewCoin};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
+use crate::base::{Page, Shell};
 use crate::{AppError, AppState};
 
 /// Raw form input, kept as typed so it can be shown back with errors.
@@ -171,6 +172,7 @@ pub struct GoldPanel {
 #[derive(Template)]
 #[template(path = "gold.html")]
 pub struct GoldPage {
+    pub shell: Shell,
     pub coins: Vec<CoinRow>,
     pub total_price: String,
     pub total_weight: String,
@@ -190,8 +192,9 @@ fn panel(coins: &[Coin], form: CoinForm, errors: FieldErrors) -> GoldPanel {
     }
 }
 
-fn page(p: GoldPanel) -> GoldPage {
+fn page(p: GoldPanel, shell: Shell) -> GoldPage {
     GoldPage {
+        shell,
         coins: p.coins,
         total_price: p.total_price,
         total_weight: p.total_weight,
@@ -208,13 +211,13 @@ fn render(template: &impl Template) -> Result<Html<String>, AppError> {
     Ok(Html(template.render()?))
 }
 
-pub async fn show(State(state): State<AppState>) -> Result<Response, AppError> {
+pub async fn show(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
     let coins = store::list_coins(&state.pool).await?;
-    Ok(render(&page(panel(
-        &coins,
-        CoinForm::empty(),
-        FieldErrors::default(),
-    )))?
+    let shell = Shell::load(&state, &headers, Page::Gold).await?;
+    Ok(render(&page(
+        panel(&coins, CoinForm::empty(), FieldErrors::default()),
+        shell,
+    ))?
     .into_response())
 }
 
@@ -237,11 +240,14 @@ pub async fn add(
         (Ok(_), false) => Ok(Redirect::to("/gold").into_response()),
         // htmx only swaps 2xx responses, so validation errors are a 200 panel there.
         (Err(errors), true) => Ok(render(&panel(&coins, form, errors))?.into_response()),
-        (Err(errors), false) => Ok((
-            StatusCode::UNPROCESSABLE_ENTITY,
-            render(&page(panel(&coins, form, errors)))?,
-        )
-            .into_response()),
+        (Err(errors), false) => {
+            let shell = Shell::load(&state, &headers, Page::Gold).await?;
+            Ok((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                render(&page(panel(&coins, form, errors), shell))?,
+            )
+                .into_response())
+        }
     }
 }
 
