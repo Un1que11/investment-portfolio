@@ -4,6 +4,7 @@ use std::str::FromStr;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use portfolio_core::AssetClass;
 use portfolio_core::allocation::{AllocationError, Sleeve};
+use portfolio_core::benchmark::BenchmarkError;
 use portfolio_core::config::Config;
 use portfolio_core::ikze::IkzeError;
 use portfolio_core::portfolio::{AccountKind, TxKind, Wrapper};
@@ -14,6 +15,7 @@ use portfolio_db::open_in_memory;
 use portfolio_db::transactions::{
     Account, Asset, NewTransaction, insert_transactions, load_ledger,
 };
+use portfolio_sources::alphavantage::AlphaVantageClient;
 use portfolio_sources::kraken::KrakenClient;
 use portfolio_sources::kraken_ledger::map_entries;
 use portfolio_sources::kraken_private::parse_ledgers;
@@ -25,7 +27,7 @@ use portfolio_sources::valuation::{
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use sqlx::SqlitePool;
-use wiremock::matchers::{method, path, path_regex};
+use wiremock::matchers::{method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const EUR_OCT: &str = include_str!("fixtures/nbp/eur_2026-10-05_2026-10-14.json");
@@ -375,6 +377,7 @@ async fn report_compares_holdings_with_the_targets() {
         ]),
         cash_rates: BTreeMap::from([("EUR".into(), Some(dec!(4)))]),
         flow_rates: req.flow_rates.iter().map(rate).collect(),
+        vwce_prices: BTreeMap::new(),
         problems: vec![],
     };
 
@@ -609,4 +612,269 @@ async fn fetch_inputs_records_problems_per_value() {
     assert_eq!(inputs.cash_rates, BTreeMap::from([("EUR".into(), None)]));
     // BTC price, EUR cash rate, and EUR rates for the deposit (12 Oct) and purchase (13 Oct).
     assert_eq!(inputs.problems.len(), 4, "{:?}", inputs.problems);
+}
+
+const VWCE_DAILY: &str = include_str!("fixtures/alphavantage/daily_vwce_tail.json");
+
+fn test_av(base_url: String) -> AlphaVantageClient {
+    AlphaVantageClient::new(base_url, "test-key")
+        .unwrap()
+        .with_request_spacing(std::time::Duration::from_millis(10))
+}
+
+/// XTB IKZE: 1516.5059 PLN on Mon 5 Oct and 756.69465 PLN on Sun 11 Oct; Kraken: 173.48 EUR on
+/// Mon 12 Oct. Each buys a whole number of VWCE units in the benchmark (see the test).
+async fn benchmark_ledger(pool: &SqlitePool) {
+    let deposit = |day, amount, currency, id| row("deposit", day, None, None, amount, currency, id);
+    insert_transactions(
+        pool,
+        Account {
+            name: "XTB IKZE",
+            kind: "ikze",
+            provider: "xtb",
+            currency: "PLN",
+        },
+        &[],
+        "xtb",
+        &[
+            deposit("2026-10-05", dec!(1516.5059), "PLN", "b1"),
+            deposit("2026-10-11", dec!(756.69465), "PLN", "b2"),
+        ],
+    )
+    .await
+    .unwrap();
+    insert_transactions(
+        pool,
+        KRAKEN,
+        &[],
+        "kraken",
+        &[deposit("2026-10-12", dec!(173.48), "EUR", "b3")],
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn benchmark_puts_every_contribution_into_vwce_on_its_date() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path_regex(r"^/exchangerates/rates/a/eur/.*"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(EUR_OCT))
+        .mount(&server)
+        .await;
+    // One request for every day: the rest come from the price cache.
+    Mock::given(method("GET"))
+        .and(path("/query"))
+        .and(query_param("function", "TIME_SERIES_DAILY"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(VWCE_DAILY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let pool = open_in_memory().await.unwrap();
+    benchmark_ledger(&pool).await;
+    let ledger = load_ledger(&pool).await.unwrap();
+    let date = d("2026-10-14");
+    assert_eq!(
+        requirements(&ledger, date).benchmark_days,
+        BTreeSet::from([d("2026-10-05"), d("2026-10-11"), d("2026-10-12"), date])
+    );
+    let nbp = NbpClient::with_base_url(server.uri()).unwrap();
+    let kraken = KrakenClient::with_base_url(server.uri()).unwrap();
+    let av = test_av(server.uri());
+    let now: DateTime<Utc> = "2026-10-15T14:00:00Z".parse().unwrap();
+    let sources = Sources {
+        pool: &pool,
+        nbp: &nbp,
+        kraken: &kraken,
+        alphavantage: Some(&av),
+        clock: Clock {
+            now,
+            today: now.date_naive(),
+        },
+        gold_buyback_factor: Decimal::ONE,
+    };
+
+    let r = portfolio_on(date, &sources).await.unwrap();
+
+    // VWCE in PLN = Xetra close x NBP EUR rate of the close's day:
+    //   5 Oct:  172.90 x 4.3855 = 758.25295; 1516.5059 buys 2 units.
+    //   11 Oct (Sunday): Friday 9 Oct, 172.86 x 4.3775 = 756.69465; 756.69465 buys 1.
+    //   12 Oct: 173.48 x 4.3889 = 761.386372; 173.48 EUR x 4.3889 = 761.386372 PLN buys 1.
+    //   14 Oct: 172.48 x 4.3706 = 753.841088; 4 units are worth 3015.364352.
+    let b = r.benchmark.as_ref().unwrap();
+    assert_eq!(b.units, dec!(4));
+    assert_eq!(b.value, dec!(3015.364352));
+    // Contributions 1516.5059 + 756.69465 + 761.386372 = 3034.586922, as the portfolio's.
+    assert_eq!(b.contributions, dec!(3034.586922));
+    assert_eq!(b.contributions, r.contributions.total);
+    assert_eq!(b.pnl(), dec!(-19.222570));
+    // The portfolio is all cash: 2273.20055 PLN + 173.48 EUR x 4.3706 = 758.211688 PLN, so
+    // 3031.412238 in total, 16.047886 more than VWCE (which fell over the week).
+    assert_eq!(r.valuation.total, dec!(3031.412238));
+    assert_eq!(b.outperformance(&r.pnl), Some(dec!(16.047886)));
+    assert!(r.problems.is_empty(), "{:?}", r.problems);
+}
+
+#[tokio::test]
+async fn benchmark_stops_asking_alpha_vantage_once_it_fails() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path_regex(r"^/exchangerates/rates/a/eur/.*"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(EUR_OCT))
+        .mount(&server)
+        .await;
+    // Down: without the stop, each of the 4 days would retry (and spend the daily quota).
+    Mock::given(method("GET"))
+        .and(path("/query"))
+        .respond_with(ResponseTemplate::new(503))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let pool = open_in_memory().await.unwrap();
+    benchmark_ledger(&pool).await;
+    let ledger = load_ledger(&pool).await.unwrap();
+    let date = d("2026-10-14");
+    let nbp = NbpClient::with_base_url(server.uri()).unwrap();
+    let kraken = KrakenClient::with_base_url(server.uri()).unwrap();
+    let av = test_av(server.uri());
+    let now: DateTime<Utc> = "2026-10-15T14:00:00Z".parse().unwrap();
+    let sources = Sources {
+        pool: &pool,
+        nbp: &nbp,
+        kraken: &kraken,
+        alphavantage: Some(&av),
+        clock: Clock {
+            now,
+            today: now.date_naive(),
+        },
+        gold_buyback_factor: Decimal::ONE,
+    };
+
+    let inputs = fetch_inputs(&requirements(&ledger, date), date, &sources).await;
+
+    assert_eq!(inputs.vwce_prices.len(), 4);
+    assert!(inputs.vwce_prices.values().all(Option::is_none));
+    assert_eq!(inputs.problems.len(), 1, "{:?}", inputs.problems);
+    assert!(
+        inputs.problems[0]
+            .starts_with("VWCE benchmark: no price for 4 of 4 days (first 2026-10-05: "),
+        "{}",
+        inputs.problems[0]
+    );
+    let r = report(&ledger, date, &inputs).unwrap();
+    assert_eq!(
+        r.benchmark,
+        Err(BenchmarkError::MissingPrice(d("2026-10-05")))
+    );
+}
+
+#[tokio::test]
+async fn without_an_alpha_vantage_key_the_benchmark_has_no_prices() {
+    let pool = open_in_memory().await.unwrap();
+    benchmark_ledger(&pool).await;
+    let ledger = load_ledger(&pool).await.unwrap();
+    let date = d("2026-10-14");
+    let req = requirements(&ledger, date);
+    let inputs = Inputs {
+        flow_rates: req
+            .flow_rates
+            .iter()
+            .map(|k| (k.clone(), Some(dec!(4))))
+            .collect(),
+        vwce_prices: req.benchmark_days.iter().map(|d| (*d, None)).collect(),
+        ..Inputs::default()
+    };
+
+    let r = report(&ledger, date, &inputs).unwrap();
+
+    assert_eq!(
+        r.benchmark,
+        Err(BenchmarkError::MissingPrice(d("2026-10-05")))
+    );
+}
+
+#[tokio::test]
+async fn benchmark_fetches_the_weekly_history_for_days_before_the_daily_closes() {
+    const VWCE_WEEKLY: &str = include_str!("fixtures/alphavantage/weekly_vwce_recent.json");
+    // Synthetic NBP answer for the window up to Fri 11 Sep (the fixtures cover October only).
+    const EUR_SEP_11: &str = r#"{"table":"A","currency":"euro","code":"EUR","rates":[{"no":"176/A/NBP/2026","effectiveDate":"2026-09-11","mid":4.25}]}"#;
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/exchangerates/rates/a/eur/2026-08-28/2026-09-11/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(EUR_SEP_11))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path_regex(r"^/exchangerates/rates/a/eur/.*"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(EUR_OCT))
+        .mount(&server)
+        .await;
+    // Daily closes start on 28 Sep; the weekly series is fetched once for the older day.
+    Mock::given(method("GET"))
+        .and(path("/query"))
+        .and(query_param("function", "TIME_SERIES_DAILY"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(VWCE_DAILY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/query"))
+        .and(query_param("function", "TIME_SERIES_WEEKLY"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(VWCE_WEEKLY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let pool = open_in_memory().await.unwrap();
+    insert_transactions(
+        &pool,
+        Account {
+            name: "XTB IKZE",
+            kind: "ikze",
+            provider: "xtb",
+            currency: "PLN",
+        },
+        &[],
+        "xtb",
+        &[row(
+            "deposit",
+            "2026-09-14",
+            None,
+            None,
+            dec!(1418.31),
+            "PLN",
+            "w1",
+        )],
+    )
+    .await
+    .unwrap();
+    let nbp = NbpClient::with_base_url(server.uri()).unwrap();
+    let kraken = KrakenClient::with_base_url(server.uri()).unwrap();
+    let av = test_av(server.uri());
+    let now: DateTime<Utc> = "2026-10-15T14:00:00Z".parse().unwrap();
+    let sources = Sources {
+        pool: &pool,
+        nbp: &nbp,
+        kraken: &kraken,
+        alphavantage: Some(&av),
+        clock: Clock {
+            now,
+            today: now.date_naive(),
+        },
+        gold_buyback_factor: Decimal::ONE,
+    };
+    let date = d("2026-10-14");
+
+    let r = portfolio_on(date, &sources).await.unwrap();
+
+    // Mon 14 Sep uses the week-end close of Fri 11 Sep: 166.86 x 4.25 = 709.155, so 1418.31
+    // buys 2 units. On 14 Oct they are worth 2 x 753.841088 = 1507.682176.
+    let b = r.benchmark.as_ref().unwrap();
+    assert_eq!((b.units, b.value), (dec!(2), dec!(1507.682176)));
+    assert!(r.problems.is_empty(), "{:?}", r.problems);
+
+    // The history is stored: a second report needs no Alpha Vantage request (the expectations
+    // above are checked when the server is dropped).
+    let again = portfolio_on(date, &sources).await.unwrap();
+    assert_eq!(again.benchmark, r.benchmark);
 }
