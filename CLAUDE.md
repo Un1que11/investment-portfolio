@@ -45,11 +45,14 @@ Targets live in `config.toml`, not in code.
 
 ## Work modes: day and night
 - **Day (manual, Misha starts it):** heavy backlog tasks, one at a time, following the rules above.
-- **Night (scheduled task):** light work only:
-  1. Review open PRs: leave a comment with bugs found, risks and missing tests.
-  2. Bug fixes: if an open PR has failing checks or the review found an obvious bug, fix it with a commit on the same branch.
-  3. If there are no open PRs, or they are fine, take the first open task marked `[light]` in BACKLOG.md.
-  4. Do not start heavy tasks (without `[light]`) at night. If there are no light tasks, do nothing and report that briefly.
+- **Night (scheduled task):** one unit of work per night, in this order:
+  1. **Review open PRs:** leave a comment with bugs found, risks, missing tests and deviations from these rules. Never approve or merge.
+  2. **Fix open PRs:** if an open PR has failing checks or the review found an obvious small bug, fix it with a commit on the same branch. Large rewrites are described in the review, not done.
+  3. **Self-review `main`:** if there is no open PR to fix, look over the project for a real bug (wrong result, crash, broken docs command, rule from this file not followed). If one is found, fix it on `fix/<slug>` with a test that fails without the fix, and open a PR. That is the night's work.
+  4. **Next task:** otherwise take the first open task marked `[light]` in BACKLOG.md; if there is none, the first open task that is not `BLOCKED`, heavy tasks included. Same rules as in the day: branch `feat/<id>-<slug>`, tests, checks green, tick `[x]` in the same PR. Skip a task that already has an open PR or depends on work in an unmerged PR. If a heavy task cannot be finished cleanly in one night, open it as a draft PR listing what is left.
+  5. **Refactor or ideas:** if no task can be taken, either open one small refactor PR (`refactor/<slug>`, no behaviour change, tests unchanged and green) or one ideas PR (below).
+- **Backlog ideas:** new ideas go only through a PR (`docs/backlog-ideas-<YYYY-MM-DD>`) that adds them to the `## Ideas (proposed by night job)` section at the end of BACKLOG.md, each with a one-line reason. Ideas are never tagged `[light]` and never inserted into the numbered phases; Misha moves them into the backlog himself. At most one ideas PR is open at a time; ideas spotted on other nights go into that PR or wait for it to be merged or closed.
+- **Limits:** at most one new PR per night, and no new PR when three or more night PRs are already waiting for Misha (then only steps 1–2).
 - Misha sets the `[light]` tag himself; at night, never add or remove it.
 
 ## Language
