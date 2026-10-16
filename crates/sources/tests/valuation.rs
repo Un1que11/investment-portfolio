@@ -3,6 +3,8 @@ use std::str::FromStr;
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use portfolio_core::AssetClass;
+use portfolio_core::allocation::{AllocationError, Sleeve};
+use portfolio_core::config::Config;
 use portfolio_core::portfolio::{AccountKind, TxKind};
 use portfolio_core::xirr::XirrError;
 use portfolio_db::gold::{NewCoin, add_coin};
@@ -16,7 +18,7 @@ use portfolio_sources::kraken_private::parse_ledgers;
 use portfolio_sources::nbp::NbpClient;
 use portfolio_sources::prices::Clock;
 use portfolio_sources::valuation::{
-    GOLD_COINS, Inputs, Sources, fetch_inputs, portfolio_on, report, requirements,
+    GOLD_COINS, Inputs, Sources, fetch_inputs, portfolio_on, report, requirements, sleeve,
 };
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
@@ -230,6 +232,83 @@ async fn kraken_mapping_feeds_contributions_in_eur() {
     );
     // ETH: 0.05 + 0.04 bought + 2 x 0.000075 staking = 0.09015.
     assert_eq!(r.holdings.assets["ETH"], dec!(0.09015));
+}
+
+#[test]
+fn every_priced_symbol_has_a_target() {
+    assert_eq!(sleeve("VWCE"), Some(Sleeve::Vwce));
+    assert_eq!(sleeve("BTC"), Some(Sleeve::Btc));
+    assert_eq!(sleeve("ETH"), Some(Sleeve::Eth));
+    assert_eq!(sleeve(GOLD_COINS), Some(Sleeve::Gold));
+    assert_eq!(sleeve("EUR"), None);
+}
+
+#[tokio::test]
+async fn report_compares_holdings_with_the_targets() {
+    let pool = open_in_memory().await.unwrap();
+    let export = portfolio_xtb::parse_file(XTB_FIXTURE).unwrap();
+    portfolio_xtb::import::import(&pool, &export).await.unwrap();
+    kraken_ledger(&pool).await;
+    let ledger = load_ledger(&pool).await.unwrap();
+    let config = Config::from_toml(
+        r#"
+        [targets]
+        vwce = 55
+        crypto = 25
+        gold = 20
+        [targets.crypto_split]
+        btc = 75
+        eth = 25
+        [ikze.limits]
+        2026 = "11304.00"
+        [tax]
+        rate_percent = 12
+        [gold]
+        buyback_factor = "0.95"
+        "#,
+    )
+    .unwrap();
+    let date = d("2026-10-15");
+    let req = requirements(&ledger, date);
+    let rate = |k: &(String, NaiveDate)| (k.clone(), Some(dec!(4)));
+    let mut inputs = Inputs {
+        position_values: BTreeMap::from([
+            ("VWCE".into(), Some(dec!(1200))),
+            ("BTC".into(), Some(dec!(800))),
+        ]),
+        cash_rates: BTreeMap::from([("EUR".into(), Some(dec!(4)))]),
+        flow_rates: req.flow_rates.iter().map(rate).collect(),
+        problems: vec![],
+    };
+
+    let a = report(&ledger, date, &inputs)
+        .unwrap()
+        .allocation(&config)
+        .unwrap();
+
+    // VWCE 1200 + BTC 800 = 2000; the cash at XTB (3.14 PLN) and Kraken (17.30 EUR) is left
+    // out. VWCE 60% vs 55%: +5 pp, 1200 - 1100 = +100 PLN. Crypto 40% vs 25%: +15 pp,
+    // 800 - 500 = +300 PLN. No gold: -20 pp, -400 PLN.
+    assert_eq!(a.total, dec!(2000));
+    let dev = |c: AssetClass| (a.by_class[&c].points(), a.by_class[&c].pln());
+    assert_eq!(dev(AssetClass::Vwce), (dec!(0.05), dec!(100)));
+    assert_eq!(dev(AssetClass::Crypto), (dec!(0.15), dec!(300)));
+    assert_eq!(dev(AssetClass::Gold), (dec!(-0.2), dec!(-400)));
+    // The crypto is all BTC: +25 pp of the crypto, 800 - 600 = +200 PLN; ETH -200 PLN.
+    let split = a.within_crypto.unwrap();
+    assert_eq!(
+        (split.btc.points(), split.btc.pln()),
+        (dec!(0.25), dec!(200))
+    );
+    assert_eq!(split.eth.pln(), dec!(-200));
+
+    // Without a VWCE price there is no allocation to show.
+    inputs.position_values.insert("VWCE".into(), None);
+    let err = report(&ledger, date, &inputs)
+        .unwrap()
+        .allocation(&config)
+        .unwrap_err();
+    assert_eq!(err, AllocationError::Unpriced(vec!["VWCE".into()]));
 }
 
 #[tokio::test]

@@ -2,6 +2,7 @@
 //!
 //! This crate has no I/O: everything here is pure and unit-tested.
 
+pub mod allocation;
 pub mod attribution;
 pub mod config;
 pub mod fx;
