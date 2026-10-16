@@ -186,6 +186,7 @@ mod tests {
             } else {
                 AccountKind::Funded
             },
+            wrapper: None,
             kind,
             asset: asset.map(Into::into),
             quantity,

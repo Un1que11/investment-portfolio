@@ -5,7 +5,8 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use portfolio_core::AssetClass;
 use portfolio_core::allocation::{AllocationError, Sleeve};
 use portfolio_core::config::Config;
-use portfolio_core::portfolio::{AccountKind, TxKind};
+use portfolio_core::ikze::IkzeError;
+use portfolio_core::portfolio::{AccountKind, TxKind, Wrapper};
 use portfolio_core::topup::TopUpError;
 use portfolio_core::xirr::XirrError;
 use portfolio_db::gold::{NewCoin, add_coin};
@@ -145,6 +146,101 @@ async fn load_ledger_maps_accounts_and_kinds() {
         (AccountKind::Funded, TxKind::Deposit, d("2026-10-12"))
     );
     assert_eq!(ledger[2].quantity, Some(dec!(0.002)));
+    // Neither Kraken nor the gold account is a tax wrapper.
+    assert!(ledger.iter().all(|t| t.wrapper.is_none()));
+}
+
+#[tokio::test]
+async fn report_counts_this_years_ikze_deposits_against_the_limit() {
+    let pool = open_in_memory().await.unwrap();
+    kraken_ledger(&pool).await;
+    let xtb = |name, kind| Account {
+        name,
+        kind,
+        provider: "xtb",
+        currency: "PLN",
+    };
+    let deposit = |day, amount, id| row("deposit", day, None, None, amount, "PLN", id);
+    insert_transactions(
+        &pool,
+        xtb("XTB IKZE", "ikze"),
+        &[],
+        "xtb",
+        &[
+            deposit("2025-12-30", dec!(2000), "z1"),
+            deposit("2026-01-05", dec!(3000), "z2"),
+            deposit("2026-10-01", dec!(1500), "z3"),
+        ],
+    )
+    .await
+    .unwrap();
+    insert_transactions(
+        &pool,
+        xtb("XTB IKE", "ike"),
+        &[],
+        "xtb",
+        &[deposit("2026-02-01", dec!(800), "e1")],
+    )
+    .await
+    .unwrap();
+    let ledger = load_ledger(&pool).await.unwrap();
+    let wrapper = |account: &str| {
+        ledger
+            .iter()
+            .find(|t| t.account == account)
+            .unwrap()
+            .wrapper
+    };
+    assert_eq!(wrapper("XTB IKZE"), Some(Wrapper::Ikze));
+    assert_eq!(wrapper("XTB IKE"), Some(Wrapper::Ike));
+    assert_eq!(wrapper("Kraken"), None);
+    let config = |limits: &str| {
+        Config::from_toml(&format!(
+            r#"
+            [targets]
+            vwce = 55
+            crypto = 25
+            gold = 20
+            [targets.crypto_split]
+            btc = 75
+            eth = 25
+            [ikze.limits]
+            {limits}
+            [tax]
+            rate_percent = 12
+            [gold]
+            buyback_factor = "0.95"
+            "#
+        ))
+        .unwrap()
+    };
+    let date = d("2026-10-15");
+    let rate = |k: &(String, NaiveDate)| (k.clone(), Some(dec!(4)));
+    let inputs = Inputs {
+        flow_rates: requirements(&ledger, date)
+            .flow_rates
+            .iter()
+            .map(rate)
+            .collect(),
+        ..Inputs::default()
+    };
+    let r = report(&ledger, date, &inputs).unwrap();
+
+    // 2026 IKZE deposits: 3000 + 1500 = 4500. Not the 2025 one, the IKE one or Kraken's EUR.
+    // Limit 11 304: 6804 left; 4500 x 0.12 = 540 saved.
+    let y = r.ikze(&config(r#"2026 = "11304.00""#)).unwrap();
+    assert_eq!(
+        (y.year, y.contributed, y.withdrawn),
+        (2026, dec!(4500), dec!(0))
+    );
+    assert_eq!((y.remaining, y.tax_saving), (dec!(6804), dec!(540)));
+    // The limit is the config's, not a constant: with 5000 configured, 500 is left.
+    let y = r.ikze(&config(r#"2026 = "5000""#)).unwrap();
+    assert_eq!(y.remaining, dec!(500));
+    assert_eq!(
+        r.ikze(&config(r#"2025 = "9388.80""#)),
+        Err(IkzeError::NoLimit(2026))
+    );
 }
 
 #[tokio::test]

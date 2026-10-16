@@ -7,6 +7,7 @@ pub mod attribution;
 pub mod config;
 pub mod fx;
 pub mod gold;
+pub mod ikze;
 pub mod pnl;
 pub mod portfolio;
 pub mod price;

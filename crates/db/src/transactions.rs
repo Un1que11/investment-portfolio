@@ -109,7 +109,7 @@ pub async fn insert_transactions(
 pub async fn load_ledger(
     pool: &SqlitePool,
 ) -> Result<Vec<portfolio_core::portfolio::LedgerTx>, sqlx::Error> {
-    use portfolio_core::portfolio::{AccountKind, LedgerTx, TxKind};
+    use portfolio_core::portfolio::{AccountKind, LedgerTx, TxKind, Wrapper};
     type Row = (
         String,
         String,
@@ -143,6 +143,11 @@ pub async fn load_ledger(
                         AccountKind::Manual
                     } else {
                         AccountKind::Funded
+                    },
+                    wrapper: match account_kind.as_str() {
+                        "ikze" => Some(Wrapper::Ikze),
+                        "ike" => Some(Wrapper::Ike),
+                        _ => None,
                     },
                     kind: TxKind::parse(&kind).ok_or_else(|| decode(format!("kind {kind:?}")))?,
                     asset,

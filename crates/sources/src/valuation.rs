@@ -1,5 +1,6 @@
 //! The whole portfolio on a date: holdings, net contributions, value, P&L, each asset's
-//! contribution to it, and XIRR in PLN; and, given the targets, how far it is from them.
+//! contribution to it, and XIRR in PLN; and, given the config, how far it is from the targets and
+//! where the year's IKZE contributions stand against the limit.
 //!
 //! Three steps, so the arithmetic stays testable without the network:
 //! 1. [`requirements`] lists the prices and rates the ledger needs for the date (pure);
@@ -12,6 +13,7 @@ use chrono::NaiveDate;
 use portfolio_core::allocation::{Allocation, AllocationError, Sleeve, allocation, sleeve_values};
 use portfolio_core::attribution::{ProfitAttribution, profit_attribution};
 use portfolio_core::config::Config;
+use portfolio_core::ikze::{IkzeError, IkzeFlows, IkzeYear, ikze_flows, ikze_year};
 use portfolio_core::pnl::{PortfolioPnl, asset_flows, portfolio_pnl};
 use portfolio_core::portfolio::{
     Contributions, Holdings, LedgerTx, MissingRate, Valuation, holdings_on, net_contributions_on,
@@ -56,6 +58,10 @@ pub fn requirements(ledger: &[LedgerTx], date: NaiveDate) -> Requirements {
         flow_rates.insert((currency.to_owned(), day));
         Some(Decimal::ONE)
     });
+    let _ = ikze_flows(ledger, date, |currency, day| {
+        flow_rates.insert((currency.to_owned(), day));
+        Some(Decimal::ONE)
+    });
     Requirements {
         assets: holdings.assets.clone(),
         cash_currencies: holdings
@@ -91,6 +97,8 @@ pub struct PortfolioReport {
     /// Each asset's share of the P&L, ranked from the most earned to the least.
     pub attribution: ProfitAttribution,
     pub xirr: PortfolioXirr,
+    /// IKZE deposits and withdrawals in the report date's calendar year, up to the date.
+    pub ikze_flows: IkzeFlows,
     pub problems: Vec<String>,
 }
 
@@ -105,6 +113,11 @@ impl PortfolioReport {
     pub fn top_up(&self, config: &Config, amount: Decimal) -> Result<TopUp, TopUpError> {
         let values = sleeve_values(&self.holdings, &self.valuation, sleeve)?;
         top_up(&values, config, amount)
+    }
+
+    /// The year's IKZE contributions against the limit and the tax rate in `config`.
+    pub fn ikze(&self, config: &Config) -> Result<IkzeYear, IkzeError> {
+        ikze_year(&self.ikze_flows, config)
     }
 }
 
@@ -143,6 +156,7 @@ pub fn report(
     let attribution = profit_attribution(&pnl);
     // Needs no rates beyond the P&L's: the same rows, dated instead of summed.
     let xirr = portfolio_xirr(ledger, date, rate, &pnl)?;
+    let ikze_flows = ikze_flows(ledger, date, rate)?;
     Ok(PortfolioReport {
         date,
         holdings,
@@ -151,6 +165,7 @@ pub fn report(
         pnl,
         attribution,
         xirr,
+        ikze_flows,
         problems: inputs.problems.clone(),
     })
 }
