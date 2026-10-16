@@ -1,4 +1,5 @@
-//! The whole portfolio on a date: holdings, net contributions, value, P&L and XIRR in PLN.
+//! The whole portfolio on a date: holdings, net contributions, value, P&L, each asset's
+//! contribution to it, and XIRR in PLN.
 //!
 //! Three steps, so the arithmetic stays testable without the network:
 //! 1. [`requirements`] lists the prices and rates the ledger needs for the date (pure);
@@ -8,6 +9,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
+use portfolio_core::attribution::{ProfitAttribution, profit_attribution};
 use portfolio_core::pnl::{PortfolioPnl, asset_flows, portfolio_pnl};
 use portfolio_core::portfolio::{
     Contributions, Holdings, LedgerTx, MissingRate, Valuation, holdings_on, net_contributions_on,
@@ -83,6 +85,8 @@ pub struct PortfolioReport {
     pub contributions: Contributions,
     pub valuation: Valuation,
     pub pnl: PortfolioPnl,
+    /// Each asset's share of the P&L, ranked from the most earned to the least.
+    pub attribution: ProfitAttribution,
     pub xirr: PortfolioXirr,
     pub problems: Vec<String>,
 }
@@ -108,6 +112,7 @@ pub fn report(
         |currency| inputs.cash_rates.get(currency).copied().flatten(),
     );
     let pnl = portfolio_pnl(flows, &valuation, &contributions);
+    let attribution = profit_attribution(&pnl);
     // Needs no rates beyond the P&L's: the same rows, dated instead of summed.
     let xirr = portfolio_xirr(ledger, date, rate, &pnl)?;
     Ok(PortfolioReport {
@@ -116,6 +121,7 @@ pub fn report(
         contributions,
         valuation,
         pnl,
+        attribution,
         xirr,
         problems: inputs.problems.clone(),
     })
