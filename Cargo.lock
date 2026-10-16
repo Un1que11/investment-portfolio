@@ -1492,6 +1492,7 @@ dependencies = [
  "portfolio-db",
  "portfolio-sources",
  "rust_decimal",
+ "rust_decimal_macros",
  "serde",
  "sqlx",
  "tokio",
