@@ -26,12 +26,17 @@
 - [x] P18. IKZE: contributions this year, remaining limit, estimated deduction.
 - [x] P19. Benchmark "everything in VWCE".
 
-## Phase 4 — interface
-- [ ] P20. Home page: total, P&L, XIRR, chart of value vs contributions.
-- [ ] P21. Asset cards with the "earned more / less" ranking.
-- [ ] P22. Allocation block: actual vs target, deviations, top-up calculator.
-- [ ] P23. IKZE block with a limit progress bar and a reminder in December.
-- [ ] P24. XTB import page.
+## Phase 4 — interface (build to `design/`, see design/README.md)
+- [ ] P28. Design system base: serve `design/tokens.css` (+ Geist), base layout with the 224px sidebar (nav, sync status footer, theme toggle), phone top bar ≤760px, theme default from `prefers-color-scheme` overridden by a cookie, askama partials for the shared components (number tile, delta badge, progress bar, allocation bar, asset card, table row, buttons, inputs) matching `screens/09-components.png`. Number formatting helpers (Polish format, U+2212 minus, signed values) with tests.
+- [ ] P31. Config: a `paused` flag per asset class (crypto and gold paused now); the top-up calculator (P17) skips paused assets unless `include_paused`, and reports "would need N zł" for them. Check P17's split matches the design's rule (pro rata to need; any surplus by target weight) and fix or explain differences.
+- [ ] P32. Period views: P&L, contributions and XIRR for 1M / 6M / YTD / 1Y / All (XIRR shown as "—" when the period is too short to be meaningful), and the benchmark gap "You're +X zł ahead of all-in VWCE" for each period.
+- [ ] P20. Overview (`screens/01–03`): hero total with P&L badge, XIRR and Contributed tiles, period switch via htmx, SVG chart (value + area, stepped contributions, toggleable dashed benchmark). Depends on P28, P32.
+- [ ] P21. Asset cards on Overview: Gold, VWCE, Bitcoin, Ether ranked by profit with #rank, value, sparkline, invested, P&L, share of profit bar; phone variant as in `screens/03`. Depends on P20.
+- [ ] P22. Allocation (`screens/04`): actual vs dashed target bars, drift table with BTC/ETH sub-rows and neutral drift bars, top-up plan panel (amount input with htmx, chips 942 / 2 000 / 5 000 zł, include paused, after-top-up bar, remaining IKZE room note). Depends on P28, P31.
+- [ ] P23. IKZE (`screens/05`): limit progress bar with hatched remainder, December reminder banner with days left and a suggested split of the remaining limit over the remaining months, 12%/32% deduction toggle, contributions-by-month SVG bars with dashed "needed to max out" months. Depends on P28.
+- [ ] P29. Gold page restyle (`screens/06`): summary tiles, coins table, inline add form with field validation as in the components sheet, "Purchases paused" badge. Depends on P28, P31.
+- [ ] P24. XTB import (`screens/07`): Upload → Review → Done steps, preview table (New vs Already imported, toggle), confirm "Add N operations", Cancel. Depends on P28.
+- [ ] P30. States (`screens/08`): empty overview with Import / Add a coin actions, loading skeleton, stale price badge and "source unavailable" banner with Retry, single-point chart, empty import drop zone, sidebar sync status variants. Depends on P20.
 
 ## Phase 5 — automation
 - [ ] P25. `portfolio-sync`: daily snapshot of prices and value; launchd plist + installation instructions.

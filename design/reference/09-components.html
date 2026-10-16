@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Portfel — component sheet</title>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+.app{--bg:#F7F7F5;--surface:#FFFFFF;--surface-2:#F0F0ED;--line:#E7E6E2;--line-2:#D8D7D2;--text:#17171A;--text-2:#505157;--text-3:#6B6C72;--accent:#3550D0;--accent-2:#8597EA;--accent-3:#C9D1F6;--accent-soft:#EEF1FC;--gain:#12703E;--gain-soft:#E6F3EB;--loss:#B2321F;--loss-soft:#FAEAE6;--warn:#7E5200;--warn-soft:#FBF1DA;font-family:'Geist',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.app[data-theme=dark]{--bg:#0D0E10;--surface:#15161A;--surface-2:#1D1E23;--line:#24262B;--line-2:#33363D;--text:#ECECEE;--text-2:#AEAFB5;--text-3:#8E8F96;--accent:#8599F6;--accent-2:#4F63C9;--accent-3:#2C376E;--accent-soft:#1A1F38;--gain:#54C690;--gain-soft:#11261B;--loss:#F2876F;--loss-soft:#2D1712;--warn:#E7B656;--warn-soft:#2A2110}
+button{font:inherit;cursor:pointer}
+.ghost:hover{background:var(--surface-2)!important}
+.field:focus{border-color:var(--accent)!important;box-shadow:0 0 0 3px var(--accent-soft);outline:none}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="width: 1440px; min-height: 1480px; box-sizing: border-box; padding: 64px; display: flex; flex-direction: column; gap: 48px">
+
+<header style="display: flex; justify-content: space-between; align-items: flex-end; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">Components</h1>
+<p style="margin: 0; font-size: 14px; color: var(--text-3)">Geist 400/500/600, tabular figures everywhere · one accent · tokens as CSS variables, swapped by <code style="font-size: 13px">data-theme</code></p>
+</div>
+<div style="font-size: 12px; color: var(--text-3)">Theme: {{theme}} (Tweaks)</div>
+</header>
+
+<section aria-labelledby="tok-h" style="display: flex; flex-direction: column; gap: 16px">
+<h2 id="tok-h" style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Tokens</h2>
+<div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px">
+<sc-for list="{{tokens}}" as="t" hint-placeholder-count="16">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="{{t.sw}}"></div>
+<div style="font-size: 12px; font-weight: 500">{{t.name}}</div>
+<div style="font-size: 11px; color: var(--text-3)">{{t.hex}}</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section aria-labelledby="type-h" style="display: flex; flex-direction: column; gap: 16px">
+<h2 id="type-h" style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Type</h2>
+<div style="display: grid; grid-template-columns: 160px 1fr; row-gap: 14px; align-items: baseline; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px">
+<span style="font-size: 12px; color: var(--text-3)">Hero · 64/500, −3.5%</span><span style="font-size: 64px; line-height: 1; font-weight: 500; letter-spacing: -0.035em">11&nbsp;500,00<span style="font-size: 0.45em; font-weight: 400; color: var(--text-2); letter-spacing: 0; margin-left: 10px">zł</span></span>
+<span style="font-size: 12px; color: var(--text-3)">Figure · 24/500</span><span style="font-size: 24px; font-weight: 500; letter-spacing: -0.02em">6&nbsp;100,00&nbsp;zł</span>
+<span style="font-size: 12px; color: var(--text-3)">Title · 15/600</span><span style="font-size: 15px; font-weight: 600">Assets</span>
+<span style="font-size: 12px; color: var(--text-3)">Body · 14/400</span><span style="font-size: 14px">Moves toward targets with new money only.</span>
+<span style="font-size: 12px; color: var(--text-3)">Caption · 12/400</span><span style="font-size: 12px; color: var(--text-3)">Prices updated 08:00</span>
+</div>
+</section>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px">
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Number tile</h2>
+<div style="padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px">
+<div style="font-size: 12px; color: var(--text-3)">XIRR · money-weighted</div>
+<div style="font-size: 22px; font-weight: 500; letter-spacing: -0.02em; color: var(--gain)">+18,6%</div>
+<div style="font-size: 12px; color: var(--text-3)">per year, since May 2025</div>
+</div>
+<div style="padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px">
+<div style="font-size: 12px; color: var(--text-3)">Contributed</div>
+<div style="font-size: 22px; font-weight: 500; letter-spacing: -0.02em">10&nbsp;092,00&nbsp;zł</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Delta badge — sign + arrow, never colour alone</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 14px; font-weight: 500; background: var(--gain-soft); color: var(--gain)">▲&nbsp;+1&nbsp;408,00&nbsp;zł</span>
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 14px; font-weight: 500; background: var(--loss-soft); color: var(--loss)">▼&nbsp;−312,40&nbsp;zł</span>
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; font-size: 14px; font-weight: 500; background: var(--surface-2); color: var(--text-2)">±0,00&nbsp;zł</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; font-weight: 500">
+<span style="color: var(--gain)">▲ +14,0%</span><span style="color: var(--loss)">▼ −2,7%</span><span style="color: var(--text-2)">▼ −2,0&nbsp;pp</span>
+</div>
+<p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-3)">Drift from target is neutral grey: being over or under isn’t good or bad.</p>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Progress bar</h2>
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface)">
+<div style="display: flex; justify-content: space-between; font-size: 13px"><span>5&nbsp;652,00&nbsp;zł</span><span style="color: var(--text-3)">of 11&nbsp;304,00&nbsp;zł</span></div>
+<div role="progressbar" aria-label="Example progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" style="position: relative; height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 50%; background: var(--accent); border-radius: 5px 0 0 5px"></div></div>
+<div style="font-size: 12px; color: var(--text-3)">50,0% used</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Allocation bar — actual over dashed target</h2>
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface)">
+<div style="display: flex; gap: 3px; height: 10px"><div style="width: 53%; background: var(--accent); border-radius: 4px 2px 2px 4px"></div><div style="width: 28.7%; background: var(--accent-2); border-radius: 2px"></div><div style="width: 18.3%; background: var(--accent-3); border-radius: 2px 4px 4px 2px"></div></div>
+<div style="display: flex; gap: 3px; height: 10px"><div style="width: 55%; border: 1.5px dashed var(--accent); box-sizing: border-box; border-radius: 4px 2px 2px 4px"></div><div style="width: 25%; border: 1.5px dashed var(--accent-2); box-sizing: border-box; border-radius: 2px"></div><div style="width: 20%; border: 1.5px dashed var(--accent-3); box-sizing: border-box; border-radius: 2px 4px 4px 2px"></div></div>
+<div style="font-size: 12px; color: var(--text-3)">Shades of one hue, stepped in lightness</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Asset card</h2>
+<article style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; justify-content: space-between; align-items: flex-start"><div style="display: flex; flex-direction: column; gap: 3px"><h3 style="margin: 0; font-size: 15px; font-weight: 600">Gold</h3><div style="font-size: 12px; color: var(--text-3)">Physical · 1 coin, 1/10 oz</div></div><span style="font-size: 12px; color: var(--text-3); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px">#1</span></div>
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px"><div style="font-size: 24px; font-weight: 500; letter-spacing: -0.02em">2&nbsp;100,00&nbsp;zł</div><svg width="96" height="32" viewBox="0 0 96 32" aria-hidden="true"><path d="M0 30 L6 28.6 L12 25.8 L18 24.4 L24 18.8 L30 15.3 L36 16.7 L42 13.2 L48 8.3 L54 5.5 L60 9 L66 7.6 L72 5.5 L78 4.1 L84 2.7 L90 0.6 L96 2" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linejoin="round"></path></svg></div>
+<dl style="margin: 0; display: flex; flex-direction: column; gap: 9px; font-size: 13px">
+<div style="display: flex; justify-content: space-between"><dt style="color: var(--text-3)">Invested</dt><dd style="margin: 0">1&nbsp;640,00&nbsp;zł</dd></div>
+<div style="display: flex; justify-content: space-between"><dt style="color: var(--text-3)">P&amp;L</dt><dd style="margin: 0; color: var(--gain)">▲ +460,00&nbsp;zł · +28,0%</dd></div>
+<div style="display: flex; flex-direction: column; gap: 7px"><div style="display: flex; justify-content: space-between"><dt style="color: var(--text-3)">Share of profit</dt><dd style="margin: 0">32,7%</dd></div><div style="height: 4px; border-radius: 2px; background: var(--surface-2)"><div style="height: 100%; width: 32.7%; background: var(--accent); border-radius: 2px"></div></div></div>
+</dl>
+</article>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Table rows</h2>
+<div style="background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden">
+<table style="width: 100%; border-collapse: collapse; font-size: 13px">
+<thead><tr style="font-size: 12px; color: var(--text-3); text-align: left"><th scope="col" style="font-weight: 400; padding: 10px 14px">Date</th><th scope="col" style="font-weight: 400; padding: 10px 14px">Type</th><th scope="col" style="font-weight: 400; padding: 10px 14px; text-align: right">Amount</th></tr></thead>
+<tbody>
+<tr style="border-top: 1px solid var(--line)"><td style="padding: 12px 14px">02.10.2026</td><td style="padding: 12px 14px">Deposit <span style="margin-left: 6px; display: inline-flex; height: 20px; align-items: center; padding: 0 7px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 500">New</span></td><td style="padding: 12px 14px; text-align: right">+942,00&nbsp;zł</td></tr>
+<tr style="border-top: 1px solid var(--line); color: var(--text-3)"><td style="padding: 12px 14px">02.09.2026</td><td style="padding: 12px 14px">Deposit · imported</td><td style="padding: 12px 14px; text-align: right">+942,00&nbsp;zł</td></tr>
+<tr style="border-top: 1px solid var(--line); background: var(--surface-2)"><td style="padding: 12px 14px">03.09.2026</td><td style="padding: 12px 14px">Stock purchase · hover</td><td style="padding: 12px 14px; text-align: right">−941,10&nbsp;zł</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Buttons</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface)">
+<button type="button" style="height: 44px; padding: 0 18px; border: 0; border-radius: 9px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 500">Add 3 operations</button>
+<button class="ghost" type="button" style="height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--text); font-size: 14px">Cancel</button>
+<button class="ghost" type="button" style="height: 44px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: var(--accent); font-size: 14px; font-weight: 500">Plan a top-up</button>
+<button class="ghost" type="button" aria-label="Refresh prices" style="width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--text-2); display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 11A7.5 7.5 0 1 0 17.3 16.3"></path><path d="M19.5 4.5V11H13"></path></svg></button>
+<button type="button" disabled="" style="height: 44px; padding: 0 18px; border: 0; border-radius: 9px; background: var(--surface-2); color: var(--text-3); font-size: 14px; font-weight: 500; cursor: default">Added</button>
+</div>
+<div role="group" aria-label="Segmented control example" style="display: flex; gap: 2px; padding: 3px; background: var(--surface-2); border-radius: 10px; align-self: flex-start">
+<button type="button" aria-pressed="false" style="min-width: 44px; height: 30px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 13px; font-weight: 500; background: transparent; color: var(--text-2)">1M</button>
+<button type="button" aria-pressed="false" style="min-width: 44px; height: 30px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 13px; font-weight: 500; background: transparent; color: var(--text-2)">6M</button>
+<button type="button" aria-pressed="false" style="min-width: 44px; height: 30px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 13px; font-weight: 500; background: transparent; color: var(--text-2)">YTD</button>
+<button type="button" aria-pressed="false" style="min-width: 44px; height: 30px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 13px; font-weight: 500; background: transparent; color: var(--text-2)">1Y</button>
+<button type="button" aria-pressed="true" style="min-width: 44px; height: 30px; padding: 0 12px; border: 0; border-radius: 7px; font-size: 13px; font-weight: 500; background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08)">All</button>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px; grid-column: span 2">
+<h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Inputs</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface)">
+<div style="flex: 1 1 200px; display: flex; flex-direction: column; gap: 6px">
+<label for="cs-amt" style="font-size: 12px; color: var(--text-3)">Amount</label>
+<div style="position: relative"><input class="field" id="cs-amt" type="text" inputmode="decimal" value="2 000" style="width: 100%; height: 52px; box-sizing: border-box; padding: 0 36px 0 14px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums"><span aria-hidden="true" style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--text-3)">zł</span></div>
+</div>
+<div style="flex: 1 1 180px; display: flex; flex-direction: column; gap: 6px">
+<label for="cs-text" style="font-size: 12px; color: var(--text-3)">Coin</label>
+<input class="field" id="cs-text" type="text" value="1/10 oz coin" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px">
+</div>
+<div style="flex: 1 1 160px; display: flex; flex-direction: column; gap: 6px">
+<label for="cs-date" style="font-size: 12px; color: var(--text-3)">Bought on</label>
+<input class="field" id="cs-date" type="date" value="2026-10-16" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid var(--line-2); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px; color-scheme: light dark">
+</div>
+<div style="flex: 1 1 160px; display: flex; flex-direction: column; gap: 6px">
+<label for="cs-err" style="font-size: 12px; color: var(--text-3)">Paid</label>
+<input class="field" id="cs-err" type="text" value="abc" aria-invalid="true" aria-describedby="cs-err-msg" style="height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid var(--loss); border-radius: 9px; background: var(--surface); color: var(--text); font: inherit; font-size: 14px">
+<span id="cs-err-msg" style="font-size: 12px; color: var(--loss)">Enter an amount like 2 050,00</span>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; height: 44px; font-size: 13px; color: var(--text-2)"><input type="checkbox" checked="" style="width: 16px; height: 16px; margin: 0; accent-color: var(--accent)">Include paused assets</label>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 500; color: var(--text-3)">Status chips</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 8px; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface)">
+<span style="display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line); font-size: 12px; color: var(--text-3)"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>Purchases paused</span>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 500">New</span>
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--gain-soft); color: var(--gain); font-size: 12px; font-weight: 500">Added</span>
+<span style="display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 6px; background: var(--warn-soft); color: var(--warn); font-size: 12px"><span style="width: 6px; height: 6px; border-radius: 3px; background: var(--warn)"></span>Stale</span>
+</div>
+</section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;},&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1480}}">
+class Component extends DCLogic {
+  renderVals() {
+    var dark = (this.props.theme || 'light') === 'dark';
+    var T = [
+      ['bg', '#F7F7F5', '#0D0E10'], ['surface', '#FFFFFF', '#15161A'], ['surface-2', '#F0F0ED', '#1D1E23'], ['line', '#E7E6E2', '#24262B'],
+      ['text', '#17171A', '#ECECEE'], ['text-2', '#505157', '#AEAFB5'], ['text-3', '#6B6C72', '#8E8F96'], ['accent', '#3550D0', '#8599F6'],
+      ['accent-2', '#8597EA', '#4F63C9'], ['accent-3', '#C9D1F6', '#2C376E'], ['accent-soft', '#EEF1FC', '#1A1F38'], ['gain', '#12703E', '#54C690'],
+      ['gain-soft', '#E6F3EB', '#11261B'], ['loss', '#B2321F', '#F2876F'], ['loss-soft', '#FAEAE6', '#2D1712'], ['warn', '#7E5200', '#E7B656']
+    ];
+    return {
+      theme: dark ? 'dark' : 'light',
+      tokens: T.map(function (t) {
+        return { name: '--' + t[0], hex: dark ? t[2] : t[1], sw: 'height: 48px; border-radius: 10px; border: 1px solid var(--line); background: var(--' + t[0] + ')' };
+      })
+    };
+  }
+}
+</script>
+
+
+</body></html>
