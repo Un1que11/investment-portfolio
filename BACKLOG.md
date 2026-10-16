@@ -36,3 +36,6 @@
 ## Phase 5 — automation
 - [ ] P25. `portfolio-sync`: daily snapshot of prices and value; launchd plist + installation instructions.
 - [ ] P26. Optional: monthly summary in Telegram (the same bot as the F1 digest).
+
+## Ideas (proposed by night job)
+- Top-up plan in buyable units: gold in whole 1/10 oz coins at the current coin price, with what is left over re-split between the other assets. Reason: P17's plan can say "gold 417 PLN" while a coin costs several times that, so its gold line cannot be bought as is.
