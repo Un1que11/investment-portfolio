@@ -14,7 +14,7 @@ Targets live in `config.toml`, not in code.
 
 ## Stack
 - Rust (stable), Axum, SQLite via sqlx (migrations in `migrations/`)
-- Templates: askama + htmx; charts: uPlot or Chart.js (loaded from a CDN)
+- Templates: askama + htmx; charts: server-rendered inline SVG (see `design/README.md`)
 - xlsx parsing: calamine
 - Background jobs: a separate `portfolio-sync` binary, run by launchd
 - Base currency: PLN. All amounts are stored as `rust_decimal::Decimal`, never as f64
@@ -32,6 +32,12 @@ Targets live in `config.toml`, not in code.
 - Deviation from target in percentage points and in PLN; a calculator: "I have N zł — how should I split my purchases to get closer to the target without selling"
 - IKZE: contributed this year, remaining limit (2026: 11 304 zł; limits per year in the config), estimated tax deduction at a 12% or 32% rate (from the config)
 - Benchmark: "if every contribution had gone into VWCE on the same dates"
+
+## UI design
+- The UI is built to match `design/` (start with `design/README.md` and `design/screens/*.png`). The design wins over guesses; any deviation is explained in the PR.
+- `design/tokens.css` is the base stylesheet; never hardcode colours, use the tokens. Both light and dark themes must work.
+- Each UI PR includes a screenshot of the implemented screen in light and dark (rendered from fixtures, no real amounts) and states which reference screen it matches.
+- Copy the markup and inline styles from `design/reference/*.html` where possible, and port the demo maths from its `text/x-dc` script only if `core` has no equivalent; prefer the `core` calculation and flag any mismatch in the PR.
 
 ## Rules for autonomous work
 1. Each session takes **one** task: the first open one in `BACKLOG.md`.

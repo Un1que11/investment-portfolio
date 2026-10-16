@@ -1,0 +1,22 @@
+/* Portfel design tokens and base styles.
+   Extracted verbatim from the Claude Design source (design/reference/*.html).
+   Theme: set data-theme="light" | "dark" on the .app root. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap');
+body{margin:0}
+.app{--bg:#F7F7F5;--surface:#FFFFFF;--surface-2:#F0F0ED;--line:#E7E6E2;--line-2:#D8D7D2;--text:#17171A;--text-2:#505157;--text-3:#6B6C72;--accent:#3550D0;--accent-2:#8597EA;--accent-3:#C9D1F6;--accent-soft:#EEF1FC;--gain:#12703E;--gain-soft:#E6F3EB;--loss:#B2321F;--loss-soft:#FAEAE6;--warn:#7E5200;--warn-soft:#FBF1DA;--shadow:0 1px 2px rgba(20,20,25,.04);font-family:'Geist',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.app[data-theme=dark]{--bg:#0D0E10;--surface:#15161A;--surface-2:#1D1E23;--line:#24262B;--line-2:#33363D;--text:#ECECEE;--text-2:#AEAFB5;--text-3:#8E8F96;--accent:#8599F6;--accent-2:#4F63C9;--accent-3:#2C376E;--accent-soft:#1A1F38;--gain:#54C690;--gain-soft:#11261B;--loss:#F2876F;--loss-soft:#2D1712;--warn:#E7B656;--warn-soft:#2A2110;--shadow:none}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--text)}
+.nav a{color:var(--text-2)}
+.nav a:hover{background:var(--surface-2);color:var(--text)}
+button{font:inherit;cursor:pointer}
+.ghost:hover{background:var(--surface-2)!important}
+a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:760px){.shell{flex-direction:column!important}
+.side{width:auto!important;flex:0 0 auto!important;flex-direction:row!important;align-items:center!important;padding:10px 12px!important;border-right:0!important;border-bottom:1px solid var(--line)!important;gap:8px!important;overflow-x:auto}
+.navlist{flex-direction:row!important}
+.sidefoot{display:none!important}
+.main{padding:24px 16px 56px!important}
+.hero-num{font-size:44px!important}
+}
+

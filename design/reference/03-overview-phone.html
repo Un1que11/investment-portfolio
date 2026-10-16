@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Portfel — Overview, phone</title>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+.app{--bg:#F7F7F5;--surface:#FFFFFF;--surface-2:#F0F0ED;--line:#E7E6E2;--line-2:#D8D7D2;--text:#17171A;--text-2:#505157;--text-3:#6B6C72;--accent:#3550D0;--accent-2:#8597EA;--accent-3:#C9D1F6;--accent-soft:#EEF1FC;--gain:#12703E;--gain-soft:#E6F3EB;--loss:#B2321F;--loss-soft:#FAEAE6;--shadow:0 1px 2px rgba(20,20,25,.04);font-family:'Geist',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.app[data-theme=dark]{--bg:#0D0E10;--surface:#15161A;--surface-2:#1D1E23;--line:#24262B;--line-2:#33363D;--text:#ECECEE;--text-2:#AEAFB5;--text-3:#8E8F96;--accent:#8599F6;--accent-2:#4F63C9;--accent-3:#2C376E;--accent-soft:#1A1F38;--gain:#54C690;--gain-soft:#11261B;--loss:#F2876F;--loss-soft:#2D1712;--shadow:none}
+a{color:var(--accent);text-decoration:none}
+button{font:inherit;cursor:pointer}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</helmet>
+<div class="app" data-theme="{{theme}}" style="width: 390px; min-height: 1640px; box-sizing: border-box; display: flex; flex-direction: column">
+
+<header style="display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 56px; padding: 0 16px; border-bottom: 1px solid var(--line)">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 9px; color: var(--text); font-weight: 600; font-size: 16px">
+<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="var(--text)"></rect><path d="M6 15.5l3.5-3.5 3 2.5L18 8.5" fill="none" stroke="var(--bg)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Portfel</a>
+<div style="display: flex; align-items: center; gap: 4px">
+<span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3)"><span style="width: 6px; height: 6px; border-radius: 3px; background: var(--gain)"></span>08:00</span>
+<button type="button" onClick="{{toggleTheme}}" aria-label="Switch colour theme" style="width: 44px; height: 44px; border: 0; background: transparent; color: var(--text-2); display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10z"></path></svg></button>
+</div>
+</header>
+
+<nav aria-label="Main" style="display: flex; gap: 6px; padding: 10px 16px; overflow-x: auto; border-bottom: 1px solid var(--line)">
+<a href="Main.dc.html" aria-current="page" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 500">Overview</a>
+<a href="Allocation.dc.html" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; color: var(--text-2); font-size: 14px">Allocation</a>
+<a href="IKZE.dc.html" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; color: var(--text-2); font-size: 14px">IKZE</a>
+<a href="Gold.dc.html" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; color: var(--text-2); font-size: 14px">Gold</a>
+<a href="Import.dc.html" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; color: var(--text-2); font-size: 14px">Import</a>
+</nav>
+
+<main style="padding: 24px 16px 40px; display: flex; flex-direction: column; gap: 24px">
+
+<section aria-label="Portfolio summary" style="display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 13px; color: var(--text-3)">Total value</div>
+<div style="font-size: 44px; line-height: 1; font-weight: 500; letter-spacing: -0.035em">11&nbsp;500,00<span style="font-size: 0.45em; font-weight: 400; color: var(--text-2); letter-spacing: 0; margin-left: 6px">zł</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px">
+<span style="{{hero.badgeStyle}}">{{hero.arrow}}&nbsp;{{hero.pnl}}</span>
+<span style="{{hero.pctStyle}}">{{hero.pct}}</span>
+<span style="color: var(--text-3); font-size: 13px">{{hero.caption}}</span>
+</div>
+</section>
+
+<div role="group" aria-label="Period" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; padding: 3px; background: var(--surface-2); border-radius: 10px">
+<sc-for list="{{periods}}" as="p" hint-placeholder-count="5">
+<button type="button" onClick="{{p.pick}}" aria-pressed="{{p.pressed}}" style="{{p.style}}">{{p.id}}</button>
+</sc-for>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+<div style="padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 12px; color: var(--text-3)">XIRR / yr</div>
+<div style="{{hero.xirrStyle}}">{{hero.xirr}}</div>
+</div>
+<div style="padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 4px">
+<div style="font-size: 12px; color: var(--text-3)">Contributed</div>
+<div style="font-size: 18px; font-weight: 500; letter-spacing: -0.02em">{{hero.flow}}</div>
+</div>
+</div>
+
+<section aria-label="Value over time" style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--text-2)">
+<span style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; height: 2px; background: var(--accent)"></span>Value</span>
+<span style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; border-top: 2px solid var(--text-3)"></span>Contributed</span>
+<span style="display: flex; align-items: center; gap: 6px"><span style="width: 12px; border-top: 2px dashed var(--text-2)"></span>All-in VWCE</span>
+</div>
+<div style="position: relative; height: 180px">
+<svg width="100%" height="100%" viewBox="0 0 1000 300" preserveAspectRatio="none" role="img" aria-label="{{chartLabel}}" style="display: block; overflow: visible">
+<path d="{{areaPath}}" fill="var(--accent)" fill-opacity="0.07"></path>
+<path d="{{contribPath}}" fill="none" stroke="var(--text-3)" stroke-width="1.5" vector-effect="non-scaling-stroke"></path>
+<path d="{{benchPath}}" fill="none" stroke="var(--text-2)" stroke-width="1.5" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"></path>
+<path d="{{valuePath}}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"></path>
+</svg>
+<span style="{{endDot}}"></span>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3)"><span>{{xFirst}}</span><span>{{xLast}}</span></div>
+</section>
+
+<section aria-labelledby="m-assets" style="display: flex; flex-direction: column; gap: 12px">
+<h2 id="m-assets" style="margin: 0; font-size: 15px; font-weight: 600">Assets <span style="font-weight: 400; color: var(--text-3)">· earned most → least</span></h2>
+<sc-for list="{{assets}}" as="a" hint-placeholder-count="4">
+<article style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<h3 style="margin: 0; font-size: 15px; font-weight: 600">{{a.name}}</h3>
+<div style="font-size: 12px; color: var(--text-3)">{{a.sub}}</div>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px">
+<div style="font-size: 17px; font-weight: 500; letter-spacing: -0.01em; white-space: nowrap">{{a.value}}</div>
+<div style="{{a.pnlStyle}}">{{a.arrow}} {{a.pnl}} · {{a.pct}}</div>
+</div>
+</div>
+<div style="display: flex; align-items: center; gap: 12px">
+<svg width="100%" height="28" viewBox="0 0 96 32" preserveAspectRatio="none" aria-hidden="true" style="flex: 1 1 auto"><path d="{{a.spark}}" fill="none" stroke="var(--text-3)" stroke-width="1.5" vector-effect="non-scaling-stroke"></path></svg>
+<div style="flex: 0 0 auto; font-size: 12px; color: var(--text-3); text-align: right">{{a.share}} of profit<div style="font-size: 12px">invested {{a.invested}}</div></div>
+</div>
+</article>
+</sc-for>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;},&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:1640}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { period: 'All', theme: null };
+  }
+  renderVals() {
+    var self = this;
+    var NB = ' ';
+    function fmt(n, d) {
+      if (d === undefined) d = 2;
+      var s = Math.abs(n).toFixed(d).split('.');
+      var i = s[0].replace(/\B(?=(\d{3})+(?!\d))/g, NB);
+      return (n < 0 ? '−' : '') + i + (d ? ',' + s[1] : '');
+    }
+    function sgn(n, d) { return (n > 0 ? '+' : n < 0 ? '−' : '±') + fmt(Math.abs(n), d); }
+    function zl(n) { return fmt(n) + NB + 'zł'; }
+    function szl(n) { return sgn(n) + NB + 'zł'; }
+    function pct(n) { return sgn(n, 1) + '%'; }
+    var VALUE = [340,2330,2760,3050,3480,3900,4020,4380,4610,4420,4560,4820,5790,6610,7640,8470,10020,11500];
+    var CONTRIB = [350,2340,2690,3040,3390,3740,4090,4440,4440,4440,4440,4440,5382,6324,7266,8208,9150,10092];
+    var IDX = [100,103,105,106,109,111,111.5,113,115,113,108,109,110,112,115,117,120,124];
+    var LBL = ['May 2025','Jun','Jul','Aug','Sep','Oct 2025','Nov','Dec','Jan 2026','Feb','Mar','Apr 2026','May','Jun','Jul','Aug','Sep 2026','Oct 2026'];
+    var PERIODS = [
+      { id: '1M', start: 16, xirr: null, cap: 'past month' },
+      { id: '6M', start: 11, xirr: 22.4, cap: 'past 6 months' },
+      { id: 'YTD', start: 7, xirr: 21.3, cap: 'since 1 Jan' },
+      { id: '1Y', start: 5, xirr: 17.1, cap: 'past 12 months' },
+      { id: 'All', start: -1, xirr: 18.6, cap: 'since May 2025' }
+    ];
+    var period = this.state.period;
+    var P = PERIODS.filter(function (x) { return x.id === period; })[0];
+    var s = P.start, last = 17;
+    var v0 = s < 0 ? 0 : VALUE[s], c0 = s < 0 ? 0 : CONTRIB[s];
+    var flow = CONTRIB[last] - c0, pnl = VALUE[last] - v0 - flow, pp = pnl / (v0 + flow) * 100;
+    var gain = pnl >= 0, tone = gain ? 'var(--gain)' : 'var(--loss)';
+    var from = s < 0 ? 0 : s;
+    var vals = VALUE.slice(from), cons = CONTRIB.slice(from), bench = [];
+    var base = s < 0 ? CONTRIB[0] : VALUE[s], u = base / IDX[from];
+    bench.push(base);
+    for (var k = from + 1; k <= last; k++) { u += (CONTRIB[k] - CONTRIB[k - 1]) / IDX[k]; bench.push(u * IDX[k]); }
+    var all = vals.concat(cons, bench);
+    var lo = s < 0 ? 0 : Math.min.apply(null, all) * 0.97, hi = Math.max.apply(null, all) * 1.04;
+    var W = 1000, H = 300, n = vals.length;
+    function pts(a) { return a.map(function (v, i) { return [n === 1 ? W / 2 : i * W / (n - 1), H - (v - lo) / (hi - lo) * H]; }); }
+    function line(p) { return p.map(function (q, i) { return (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1); }).join(' '); }
+    function stepLine(p) { var d = 'M' + p[0][0].toFixed(1) + ' ' + p[0][1].toFixed(1); for (var i = 1; i < p.length; i++) d += ' H' + p[i][0].toFixed(1) + ' V' + p[i][1].toFixed(1); return d; }
+    var vp = pts(vals), lp = vp[vp.length - 1];
+    var periods = PERIODS.map(function (x) {
+      var on = x.id === period;
+      return { id: x.id, pressed: on ? 'true' : 'false', pick: function () { self.setState({ period: x.id }); },
+        style: 'height: 36px; border: 0; border-radius: 7px; font-size: 13px; font-weight: 500; ' + (on ? 'background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08)' : 'background: transparent; color: var(--text-2)') };
+    });
+    var ASSETS = [
+      { name: 'Gold', sub: '1 coin · 1/10 oz', invested: 1640, value: 2100, series: [1640,1660,1700,1720,1800,1850,1830,1880,1950,1990,1940,1960,1990,2010,2030,2060,2100] },
+      { name: 'VWCE', sub: 'IKZE · XTB', invested: 5652, value: 6100, series: [948,1905,2910,3900,4930,6100] },
+      { name: 'Bitcoin', sub: 'BTC · Kraken', invested: 2100, value: 2380, series: [255,540,790,1010,1300,1590,1720,2010,2190,1980,1850,1940,2060,2150,2240,2190,2290,2380] },
+      { name: 'Ether', sub: 'ETH · Kraken', invested: 700, value: 920, series: [88,170,265,360,440,540,600,690,720,660,610,650,700,760,820,850,880,920] }
+    ];
+    var tp = ASSETS.reduce(function (a, x) { return a + x.value - x.invested; }, 0);
+    var assets = ASSETS.slice().sort(function (a, b) { return (b.value - b.invested) - (a.value - a.invested); }).map(function (x) {
+      var p = x.value - x.invested, g = p >= 0, m = x.series.length;
+      var mn = Math.min.apply(null, x.series), mx = Math.max.apply(null, x.series);
+      return {
+        name: x.name, sub: x.sub, value: zl(x.value), invested: zl(x.invested),
+        pnl: szl(p), pct: pct(p / x.invested * 100), arrow: g ? '▲' : '▼',
+        pnlStyle: 'font-size: 12px; white-space: nowrap; color: ' + (g ? 'var(--gain)' : 'var(--loss)'),
+        share: fmt(p / tp * 100, 1) + '%',
+        spark: x.series.map(function (v, q) { return (q ? 'L' : 'M') + (q * 96 / (m - 1)).toFixed(1) + ' ' + (30 - (v - mn) / (mx - mn) * 28).toFixed(1); }).join(' ')
+      };
+    });
+    var theme = this.state.theme || this.props.theme || 'light';
+    return {
+      theme: theme,
+      toggleTheme: function () { self.setState({ theme: theme === 'dark' ? 'light' : 'dark' }); },
+      periods: periods,
+      hero: {
+        pnl: szl(pnl), pct: pct(pp), arrow: gain ? '▲' : '▼', caption: P.cap,
+        badgeStyle: 'display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; font-weight: 500; background: ' + (gain ? 'var(--gain-soft)' : 'var(--loss-soft)') + '; color: ' + tone,
+        pctStyle: 'font-weight: 500; color: ' + tone,
+        xirr: P.xirr === null ? '—' : pct(P.xirr),
+        xirrStyle: 'font-size: 18px; font-weight: 500; letter-spacing: -0.02em; color: ' + (P.xirr === null ? 'var(--text-3)' : 'var(--gain)'),
+        flow: zl(flow)
+      },
+      chartLabel: 'Portfolio value against contributions, ' + P.cap,
+      valuePath: line(vp), areaPath: line(vp) + ' L' + W + ' ' + H + ' L0 ' + H + ' Z',
+      contribPath: stepLine(pts(cons)), benchPath: line(pts(bench)),
+      endDot: 'position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--surface); transform: translate(-50%, -50%); left: ' + (lp[0] / 10).toFixed(2) + '%; top: ' + (lp[1] / 3).toFixed(2) + '%',
+      xFirst: LBL[from], xLast: LBL[last],
+      assets: assets
+    };
+  }
+}
+</script>
+
+
+</body></html>
