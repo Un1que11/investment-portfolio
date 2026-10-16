@@ -23,7 +23,7 @@
 - [x] P15. Each asset's contribution to the total profit, and a ranking.
 - [x] P16. Deviation from target (pp and PLN), including the BTC/ETH split within crypto.
 - [x] P17. Top-up calculator: amount N → a purchase plan without selling.
-- [ ] P18. IKZE: contributions this year, remaining limit, estimated deduction.
+- [x] P18. IKZE: contributions this year, remaining limit, estimated deduction.
 - [ ] P19. Benchmark "everything in VWCE".
 
 ## Phase 4 — interface

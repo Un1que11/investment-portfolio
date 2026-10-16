@@ -350,6 +350,7 @@ mod tests {
             } else {
                 AccountKind::Funded
             },
+            wrapper: None,
             kind,
             asset: asset.map(Into::into),
             quantity: asset.map(|_| dec!(1)),

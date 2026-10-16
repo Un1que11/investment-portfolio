@@ -141,6 +141,14 @@ their targets. The crypto purchase is then split between BTC and ETH the same wa
 crypto split; if crypto is overweight, neither coin gets anything. Cash in the accounts is not
 counted, as in the allocation.
 
+The IKZE block covers the calendar year of the report date: what was deposited into IKZE accounts
+from 1 January up to the date, how much of that year's limit in `config.toml` is left, and the
+estimated tax saving, which is the deductible part (everything paid in, up to the limit) times
+the tax rate in `config.toml`. Deposits count in the year of their date. Withdrawals are shown
+apart and give no limit back, since the limit caps payments in. The tax due on an early
+withdrawal ("zwrot") is not estimated. A year without a limit in the config is reported, not
+guessed.
+
 ## Configuration
 
 Settings live in `config.toml` at the repository root (another file can be named with

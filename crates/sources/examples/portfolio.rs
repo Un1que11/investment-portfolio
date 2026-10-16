@@ -1,6 +1,6 @@
 //! Print holdings, net contributions, value, P&L, each asset's contribution to it, XIRR and the
-//! deviation from the target allocation in PLN for a date (default: today), and optionally how
-//! to split a top-up of N PLN:
+//! deviation from the target allocation in PLN for a date (default: today), the year's IKZE
+//! contributions against the limit, and optionally how to split a top-up of N PLN:
 //!
 //!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor] [N]
 //!
@@ -192,6 +192,36 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => println!("Top-up: not available ({e})"),
         }
+    }
+    match r.ikze(&config) {
+        Ok(y) => {
+            println!(
+                "IKZE {}: contributed {} of {} PLN, {} PLN left",
+                y.year,
+                pln(y.contributed),
+                pln(y.limit),
+                pln(y.remaining)
+            );
+            if !y.over_limit.is_zero() {
+                println!(
+                    "  {} PLN over the limit (not deductible)",
+                    pln(y.over_limit)
+                );
+            }
+            println!(
+                "  estimated tax saving: {} PLN ({} of {} PLN deductible)",
+                pln(y.tax_saving),
+                pct(Some(y.tax_rate)),
+                pln(y.deductible)
+            );
+            if !y.withdrawn.is_zero() {
+                println!(
+                    "  withdrawn this year: {} PLN (frees no limit; tax on it not estimated)",
+                    pln(y.withdrawn)
+                );
+            }
+        }
+        Err(e) => println!("IKZE: not available ({e})"),
     }
     for p in &r.problems {
         println!("  note: {p}");

@@ -23,6 +23,16 @@ pub enum AccountKind {
     Manual,
 }
 
+/// Polish tax-advantaged retirement account an account is, if any (`accounts.kind`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Wrapper {
+    /// Indywidualne Konto Zabezpieczenia Emerytalnego: contributions are deductible up to a
+    /// yearly limit.
+    Ikze,
+    /// Indywidualne Konto Emerytalne.
+    Ike,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TxKind {
     Buy,
@@ -53,6 +63,8 @@ pub struct LedgerTx {
     pub date: NaiveDate,
     pub account: String,
     pub account_kind: AccountKind,
+    /// The account is an IKZE or IKE; `None` for ordinary accounts.
+    pub wrapper: Option<Wrapper>,
     pub kind: TxKind,
     /// Asset symbol, when the transaction concerns an asset.
     pub asset: Option<String>,
@@ -269,6 +281,7 @@ mod tests {
             } else {
                 AccountKind::Funded
             },
+            wrapper: None,
             kind,
             asset: asset.map(Into::into),
             quantity,
