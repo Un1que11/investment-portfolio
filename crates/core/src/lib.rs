@@ -4,6 +4,7 @@
 
 pub mod fx;
 pub mod gold;
+pub mod pnl;
 pub mod portfolio;
 pub mod price;
 

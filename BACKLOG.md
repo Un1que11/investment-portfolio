@@ -18,7 +18,7 @@
 
 ## Phase 3 — calculations (all in `core`, all with tests)
 - [x] P12. Positions and value on a date; net contributions.
-- [ ] P13. P&L absolute and in % per asset and for the portfolio.
+- [x] P13. P&L absolute and in % per asset and for the portfolio.
 - [ ] P14. XIRR for the portfolio and per asset.
 - [ ] P15. Each asset's contribution to the total profit, and a ranking.
 - [ ] P16. Deviation from target (pp and PLN), including the BTC/ETH split within crypto.

@@ -101,6 +101,12 @@ contributions are money put in from outside, at the NBP rate of each flow's date
 withdrawals for XTB and Kraken, coin purchases for gold. Value is every position at that day's
 price plus the cash left in each account; positions without a price are listed, not guessed.
 
+P&L is value minus net contributions (and as a % of them). Per asset it is value minus cost
+(buys plus that asset's fees) plus sale proceeds and cash dividends, each at the NBP rate of its
+own date, so currency moves since purchase are part of an asset's result; % is P&L over cost.
+What assets do not explain (cash, currency moves on cash, account fees) is shown separately, so
+the parts add up to the total.
+
 ## Run
 
 ```bash

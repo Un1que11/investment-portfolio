@@ -8,6 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
+use portfolio_core::pnl::{PortfolioPnl, asset_flows, portfolio_pnl};
 use portfolio_core::portfolio::{
     Contributions, Holdings, LedgerTx, MissingRate, Valuation, holdings_on, net_contributions_on,
     value,
@@ -32,7 +33,8 @@ pub struct Requirements {
     pub assets: BTreeMap<String, Decimal>,
     /// Non-PLN cash currencies held on the date (each needs a rate on the date).
     pub cash_currencies: BTreeSet<String>,
-    /// (currency, date) of every non-PLN contribution flow up to the date.
+    /// (currency, date) of every non-PLN flow up to the date that P&L needs: contributions
+    /// and asset buys, sells, fees and dividends.
     pub flow_rates: BTreeSet<(String, NaiveDate)>,
 }
 
@@ -41,6 +43,10 @@ pub fn requirements(ledger: &[LedgerTx], date: NaiveDate) -> Requirements {
     let mut flow_rates = BTreeSet::new();
     // Ask the contribution calculation itself which rates it needs.
     let _ = net_contributions_on(ledger, date, |currency, day| {
+        flow_rates.insert((currency.to_owned(), day));
+        Some(Decimal::ONE)
+    });
+    let _ = asset_flows(ledger, date, |currency, day| {
         flow_rates.insert((currency.to_owned(), day));
         Some(Decimal::ONE)
     });
@@ -75,6 +81,7 @@ pub struct PortfolioReport {
     pub holdings: Holdings,
     pub contributions: Contributions,
     pub valuation: Valuation,
+    pub pnl: PortfolioPnl,
     pub problems: Vec<String>,
 }
 
@@ -84,23 +91,27 @@ pub fn report(
     inputs: &Inputs,
 ) -> Result<PortfolioReport, MissingRate> {
     let holdings = holdings_on(ledger, date);
-    let contributions = net_contributions_on(ledger, date, |currency, day| {
+    let rate = |currency: &str, day: NaiveDate| {
         inputs
             .flow_rates
             .get(&(currency.to_owned(), day))
             .copied()
             .flatten()
-    })?;
+    };
+    let contributions = net_contributions_on(ledger, date, rate)?;
+    let flows = asset_flows(ledger, date, rate)?;
     let valuation = value(
         &holdings,
         |asset, _| inputs.position_values.get(asset).copied().flatten(),
         |currency| inputs.cash_rates.get(currency).copied().flatten(),
     );
+    let pnl = portfolio_pnl(flows, &valuation, &contributions);
     Ok(PortfolioReport {
         date,
         holdings,
         contributions,
         valuation,
+        pnl,
         problems: inputs.problems.clone(),
     })
 }
