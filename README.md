@@ -194,13 +194,7 @@ comes from `config.toml` (or the file named by `PORTFOLIO_CONFIG`), and `ALPHAVA
 (environment or `.env`) prices VWCE; without it VWCE shows as unpriced.
 
 Pages:
-- `/`: the portfolio today: value, net contributions, P&L (PLN and %) and XIRR since the first
-  contribution. When a position or cash currency has no price, the value, P&L and XIRR say
-  "not available" and name what is missing, instead of showing an understated total. Below it,
-  a chart (uPlot) of value against net contributions at the first contribution, every month end
-  since, and today. It loads after the page (htmx), reads prices through the same caches as the
-  report, and leaves a gap on days without a complete value. A provider that fails is asked
-  only once per chart.
+- `/`: redirects to `/gold` until the Overview (P20) is built to `design/`.
 - `/gold`: add, list and delete physical gold coins (purchase date, price in PLN, fine gold
   weight, optional manual quote and label). Amounts may be typed with a decimal comma.
 

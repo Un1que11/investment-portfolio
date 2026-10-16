@@ -168,10 +168,11 @@ async fn health_and_root() {
     let (router, _) = setup().await;
 
     assert_eq!(send(&router, get("/health")).await.1, "ok");
-    // An empty portfolio needs no price: the home page renders without any source.
-    let (status, body, _) = send(&router, get("/")).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("No contributions yet"), "{body}");
+    let (status, _, location) = send(&router, get("/")).await;
+    assert_eq!(
+        (status, location.as_deref()),
+        (StatusCode::SEE_OTHER, Some("/gold"))
+    );
     assert_eq!(send(&router, get("/nope")).await.0, StatusCode::NOT_FOUND);
 }
 
