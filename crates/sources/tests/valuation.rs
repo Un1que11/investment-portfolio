@@ -360,6 +360,19 @@ async fn live_sources_value_the_portfolio() {
     assert_eq!(r.pnl.pnl(), r.valuation.total - dec!(3477.7800));
     // VWCE is unpriced, so the portfolio P&L is not offered as a result.
     assert_eq!((r.pnl.pnl_if_complete(), r.pnl.pnl_ratio()), (None, None));
+    // Contributions: gold lost less than BTC; VWCE has no P&L and is not ranked. Without the
+    // total there are no shares, but points of the return: -42.26942 / 3477.78 = -1.2154 pp.
+    let ranked: Vec<&str> = r
+        .attribution
+        .ranked
+        .iter()
+        .map(|(a, _)| a.as_str())
+        .collect();
+    assert_eq!(ranked, [GOLD_COINS, "BTC"]);
+    assert_eq!(r.attribution.unpriced, ["VWCE"]);
+    let gold = r.attribution.ranked[0].1;
+    assert_eq!(gold.share_of_total, None);
+    assert_eq!(gold.return_points.unwrap().round_dp(6), dec!(-0.012154));
     // XIRR: the same gaps. Gold has one flow in and its value, 13 days apart:
     // (1557.73058 / 1600)^(365 / 13) - 1 = -52.84% a year (a short period exaggerates).
     assert_eq!(r.xirr.first_flow, Some(d("2026-10-01")));

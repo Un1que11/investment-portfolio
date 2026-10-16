@@ -121,6 +121,12 @@ own date, so currency moves since purchase are part of an asset's result; % is P
 What assets do not explain (cash, currency moves on cash, account fees) is shown separately, so
 the parts add up to the total.
 
+Each asset's contribution is its P&L in PLN, ranked from the asset that earned the most to the
+one that earned the least (fully sold assets included, unpriced ones listed apart). It is also
+shown as a share of the total P&L and in percentage points of the portfolio's P&L %; with the
+unexplained rest, both add up to the whole. When the portfolio is at a loss, the shares are of
+the loss.
+
 XIRR is the annual return that accounts for when money went in: the same flows, dated (money
 put in negative, the value on the date as the last flow), solved Actual/365 like Excel's XIRR.
 For the portfolio the flows are the contributions; per asset, buys and fees, sales and cash

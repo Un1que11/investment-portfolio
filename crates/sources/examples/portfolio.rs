@@ -1,4 +1,5 @@
-//! Print holdings, net contributions, value, P&L and XIRR in PLN for a date (default: today):
+//! Print holdings, net contributions, value, P&L, each asset's contribution to it and XIRR in
+//! PLN for a date (default: today):
 //!
 //!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor]
 //!
@@ -116,6 +117,23 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(other) = r.pnl.other() {
         println!("  cash, FX on cash, account fees: {} PLN", pln(other));
+    }
+    println!("Contribution to P&L, most to least:");
+    for (asset, c) in &r.attribution.ranked {
+        let points = c.return_points.map_or("-".into(), |x| {
+            format!("{:+.2} pp", x * Decimal::ONE_HUNDRED)
+        });
+        println!(
+            "  {asset:<11} {:>14} PLN  {:>8} of the total  {points:>10}",
+            pln(c.pnl),
+            pct(c.share_of_total)
+        );
+    }
+    if !r.attribution.unpriced.is_empty() {
+        println!(
+            "  not ranked (no price): {}",
+            r.attribution.unpriced.join(", ")
+        );
     }
     let annual = |x: &Result<Decimal, _>| match x {
         Ok(rate) => format!("{} a year", pct(Some(*rate))),
