@@ -1,4 +1,4 @@
-//! Print holdings, net contributions and value in PLN for a date (default: today):
+//! Print holdings, net contributions, value, P&L and XIRR in PLN for a date (default: today):
 //!
 //!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor]
 //!
@@ -116,6 +116,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(other) = r.pnl.other() {
         println!("  cash, FX on cash, account fees: {} PLN", pln(other));
+    }
+    let annual = |x: &Result<Decimal, _>| match x {
+        Ok(rate) => format!("{} a year", pct(Some(*rate))),
+        Err(e) => format!("not available ({e})"),
+    };
+    let since = r.xirr.first_flow.map_or("-".into(), |d| d.to_string());
+    println!("XIRR since {since}: {}", annual(&r.xirr.portfolio));
+    for (asset, x) in &r.xirr.by_asset {
+        println!("  {asset:<11} {}", annual(x));
     }
     for p in &r.problems {
         println!("  note: {p}");

@@ -8,6 +8,7 @@ pub mod gold;
 pub mod pnl;
 pub mod portfolio;
 pub mod price;
+pub mod xirr;
 
 use std::fmt;
 use std::str::FromStr;
