@@ -101,20 +101,6 @@ contributions are money put in from outside, at the NBP rate of each flow's date
 withdrawals for XTB and Kraken, coin purchases for gold. Value is every position at that day's
 price plus the cash left in each account; positions without a price are listed, not guessed.
 
-## Configuration
-
-Settings live in `config.toml` at the repository root (another file can be named with
-`PORTFOLIO_CONFIG`), parsed and validated by `portfolio_core::config::Config`:
-
-- `[targets]`: target allocation in percent (`vwce`, `crypto`, `gold`), adding up to exactly 100;
-  `[targets.crypto_split]` splits the crypto share between `btc` and `eth`, also adding up to 100.
-- `[ikze.limits]`: the IKZE contribution limit in PLN per year (`2026 = "11304.00"`).
-- `[tax] rate_percent`: the income tax rate used to estimate the IKZE deduction (12 or 32).
-- `[gold] buyback_factor`: the share of melt value a dealer pays for a coin (above 0, at most 1.5).
-
-Numbers are exact decimals: write whole numbers bare and fractions as strings (`"0.95"`); TOML
-floats are rejected so that nothing passes through binary floating point. Unknown keys, missing
-keys and shares that do not add up are reported as errors.
 P&L is value minus net contributions (and as a % of them). Per asset it is value minus cost
 (buys plus that asset's fees) plus sale proceeds and cash dividends, each at the NBP rate of its
 own date, so currency moves since purchase are part of an asset's result; % is P&L over cost.
@@ -132,6 +118,28 @@ put in negative, the value on the date as the last flow), solved Actual/365 like
 For the portfolio the flows are the contributions; per asset, buys and fees, sales and cash
 dividends. Assets held only from staking rewards cost nothing and have no XIRR. Over a short
 period the annualised figure exaggerates, so the report prints the date it starts from.
+
+The allocation compares the assets' values with the targets in `config.toml`: each class
+(VWCE, crypto, gold) as a share of the three together, and BTC and ETH as shares of the crypto.
+Cash left in accounts belongs to no class and is left out. Deviations are actual minus target,
+in percentage points and in PLN (positive = overweight), so per class they add up to zero; the
+PLN deviation within crypto is what would have to move between BTC and ETH. Without a price for
+every held asset there is no allocation.
+
+## Configuration
+
+Settings live in `config.toml` at the repository root (another file can be named with
+`PORTFOLIO_CONFIG`), parsed and validated by `portfolio_core::config::Config`:
+
+- `[targets]`: target allocation in percent (`vwce`, `crypto`, `gold`), adding up to exactly 100;
+  `[targets.crypto_split]` splits the crypto share between `btc` and `eth`, also adding up to 100.
+- `[ikze.limits]`: the IKZE contribution limit in PLN per year (`2026 = "11304.00"`).
+- `[tax] rate_percent`: the income tax rate used to estimate the IKZE deduction (12 or 32).
+- `[gold] buyback_factor`: the share of melt value a dealer pays for a coin (above 0, at most 1.5).
+
+Numbers are exact decimals: write whole numbers bare and fractions as strings (`"0.95"`); TOML
+floats are rejected so that nothing passes through binary floating point. Unknown keys, missing
+keys and shares that do not add up are reported as errors.
 
 ## Run
 

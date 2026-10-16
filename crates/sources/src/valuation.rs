@@ -1,5 +1,5 @@
 //! The whole portfolio on a date: holdings, net contributions, value, P&L, each asset's
-//! contribution to it, and XIRR in PLN.
+//! contribution to it, and XIRR in PLN; and, given the targets, how far it is from them.
 //!
 //! Three steps, so the arithmetic stays testable without the network:
 //! 1. [`requirements`] lists the prices and rates the ledger needs for the date (pure);
@@ -9,7 +9,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
+use portfolio_core::allocation::{Allocation, AllocationError, Sleeve, allocation};
 use portfolio_core::attribution::{ProfitAttribution, profit_attribution};
+use portfolio_core::config::Config;
 use portfolio_core::pnl::{PortfolioPnl, asset_flows, portfolio_pnl};
 use portfolio_core::portfolio::{
     Contributions, Holdings, LedgerTx, MissingRate, Valuation, holdings_on, net_contributions_on,
@@ -89,6 +91,24 @@ pub struct PortfolioReport {
     pub attribution: ProfitAttribution,
     pub xirr: PortfolioXirr,
     pub problems: Vec<String>,
+}
+
+impl PortfolioReport {
+    /// How far the holdings are from the targets in `config` (classes and the crypto split).
+    pub fn allocation(&self, config: &Config) -> Result<Allocation, AllocationError> {
+        allocation(&self.holdings, &self.valuation, config, sleeve)
+    }
+}
+
+/// Which target an asset counts towards, by its symbol.
+pub fn sleeve(symbol: &str) -> Option<Sleeve> {
+    match symbol {
+        s if s == VWCE.symbol => Some(Sleeve::Vwce),
+        s if s == BTC.symbol => Some(Sleeve::Btc),
+        s if s == ETH.symbol => Some(Sleeve::Eth),
+        GOLD_COINS => Some(Sleeve::Gold),
+        _ => None,
+    }
 }
 
 pub fn report(

@@ -1,13 +1,14 @@
-//! Print holdings, net contributions, value, P&L, each asset's contribution to it and XIRR in
-//! PLN for a date (default: today):
+//! Print holdings, net contributions, value, P&L, each asset's contribution to it, XIRR and the
+//! deviation from the target allocation in PLN for a date (default: today):
 //!
 //!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor]
 //!
 //! Uses PORTFOLIO_DB_URL (default sqlite://portfolio.db) and ALPHAVANTAGE_API_KEY for VWCE
-//! (environment or `.env`). The gold buyback factor comes from `config.toml` (or the file named
-//! by PORTFOLIO_CONFIG); a factor given on the command line overrides it.
+//! (environment or `.env`). Targets and the gold buyback factor come from `config.toml` (or the
+//! file named by PORTFOLIO_CONFIG); a factor given on the command line overrides the config's.
 
 use chrono::{Local, NaiveDate, Utc};
+use portfolio_core::allocation::Deviation;
 use portfolio_core::config::Config;
 use portfolio_sources::alphavantage::AlphaVantageClient;
 use portfolio_sources::kraken::KrakenClient;
@@ -38,15 +39,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Some(s) => s.parse::<NaiveDate>()?,
         None => clock.today,
     };
+    let path = std::env::var("PORTFOLIO_CONFIG").unwrap_or_else(|_| "config.toml".to_owned());
+    let text =
+        std::fs::read_to_string(&path).map_err(|e| format!("cannot read config {path}: {e}"))?;
+    let config = Config::from_toml(&text)?;
     let factor = match args.next() {
         Some(s) => s.parse::<Decimal>()?,
-        None => {
-            let path =
-                std::env::var("PORTFOLIO_CONFIG").unwrap_or_else(|_| "config.toml".to_owned());
-            let text = std::fs::read_to_string(&path)
-                .map_err(|e| format!("cannot read config {path}: {e}"))?;
-            Config::from_toml(&text)?.gold_buyback_factor()
-        }
+        None => config.gold_buyback_factor(),
     };
     let db_url =
         std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned());
@@ -143,6 +142,34 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("XIRR since {since}: {}", annual(&r.xirr.portfolio));
     for (asset, x) in &r.xirr.by_asset {
         println!("  {asset:<11} {}", annual(x));
+    }
+    let points = |x: Decimal| format!("{:+.2} pp", x * Decimal::ONE_HUNDRED);
+    let line = |name: &str, d: &Deviation| {
+        println!(
+            "  {name:<11} {:>14} PLN  {:>7} (target {:>7})  {:>10}  {:>14} PLN",
+            pln(d.value),
+            pct(Some(d.share)),
+            pct(Some(d.target_share)),
+            points(d.points()),
+            format!("{:+.2}", d.pln()),
+        )
+    };
+    match r.allocation(&config) {
+        Ok(a) => {
+            println!(
+                "Allocation of {} PLN (cash left out), deviation from target:",
+                pln(a.total)
+            );
+            for (class, d) in &a.by_class {
+                line(class.as_str(), d);
+            }
+            if let Some(split) = &a.within_crypto {
+                println!("  within crypto:");
+                line("btc", &split.btc);
+                line("eth", &split.eth);
+            }
+        }
+        Err(e) => println!("Allocation: not available ({e})"),
     }
     for p in &r.problems {
         println!("  note: {p}");
