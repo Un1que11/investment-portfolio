@@ -129,6 +129,18 @@ fractional units and no cash waiting to be invested. For contribution dates olde
 Alpha Vantage requests) and stores it; those dates then use the week-end close before them. A
 withdrawal larger than the benchmark was worth on its day is reported instead of a result.
 
+The periods block repeats P&L, net contributions, XIRR and the gap to all-in VWCE for each period
+of the Overview's switch, ending on the report date: 1M, 6M and 1Y start at the end of the same
+day one, six or twelve months earlier (the month's last day when it is shorter), YTD at the end
+of 31 December, and All at the first contribution. The value at the start counts as money put in
+on the start day, so a period's P&L is end value minus start value minus the period's own
+contributions (% of start value plus contributions), its XIRR uses the start value as the first
+flow, and its benchmark puts the start value into VWCE on the start day too. XIRR is shown as
+"-" for a period shorter than 3 months, counted from the start day, or from the first
+contribution when nothing was held at the start: annualising less than a quarter mostly
+magnifies noise, and the Overview says "Needs 3+ months of data". Start values are priced like
+the home chart's points, through the same caches; a start day with nothing held needs no price.
+
 The allocation compares the assets' values with the targets in `config.toml`: each class
 (VWCE, crypto, gold) as a share of the three together, and BTC and ETH as shares of the crypto.
 Cash left in accounts belongs to no class and is left out. Deviations are actual minus target,

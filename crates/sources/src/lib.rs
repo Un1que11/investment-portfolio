@@ -11,6 +11,7 @@ pub mod kraken;
 pub mod kraken_ledger;
 pub mod kraken_private;
 pub mod nbp;
+pub mod periods;
 pub mod prices;
 pub mod valuation;
 

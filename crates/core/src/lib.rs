@@ -10,6 +10,7 @@ pub mod fx;
 pub mod gold;
 pub mod history;
 pub mod ikze;
+pub mod period;
 pub mod pnl;
 pub mod portfolio;
 pub mod price;
