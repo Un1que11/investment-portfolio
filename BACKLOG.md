@@ -44,3 +44,6 @@
 
 ## Ideas (proposed by night job)
 - Top-up plan in buyable units: gold in whole 1/10 oz coins at the current coin price, with what is left over re-split between the other assets. Reason: P17's plan can say "gold 417 PLN" while a coin costs several times that, so its gold line cannot be bought as is.
+- (S) Kraken balance reconciliation: after each sync, compare the `Balance` endpoint per asset with the positions derived from the stored ledger and report any mismatch. Reason: `Balance` is already fetched but unused; a ledger type the mapper misses (staking, dust conversion, airdrop) would otherwise skew value and XIRR silently.
+- (S) Database backup in `portfolio-sync`: a daily `VACUUM INTO` copy of the SQLite file with the last N kept, path in the config. Reason: hand-entered coins and imported XTB history exist only in that file and cannot be re-fetched from any API.
+- (S) Gold purchase premium per coin: price paid vs NBP melt value on the purchase date, and today's buyback spread, shown separately from the gold price move. Reason: gold's P&L starts negative by the dealer premium, and without the split the "earned the least" ranking mixes price moves with buying costs.
