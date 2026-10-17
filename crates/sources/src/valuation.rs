@@ -22,7 +22,7 @@ use portfolio_core::portfolio::{
     value,
 };
 use portfolio_core::topup::{TopUp, TopUpError, top_up};
-use portfolio_core::xirr::{PortfolioXirr, contribution_flows, portfolio_xirr};
+use portfolio_core::xirr::{CashFlow, PortfolioXirr, contribution_flows, portfolio_xirr};
 use portfolio_db::gold as coins;
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
@@ -109,6 +109,9 @@ pub struct PortfolioReport {
     pub xirr: PortfolioXirr,
     /// IKZE deposits and withdrawals in the report date's calendar year, up to the date.
     pub ikze_flows: IkzeFlows,
+    /// Every contribution up to the date, dated, in PLN (put in = negative), for the period
+    /// views ([`crate::periods`]).
+    pub contribution_flows: Vec<CashFlow>,
     /// The same contributions, each put into VWCE on its own date.
     pub benchmark: Result<Benchmark, BenchmarkError>,
     pub problems: Vec<String>,
@@ -175,7 +178,8 @@ pub fn report(
     // Needs no rates beyond the P&L's: the same rows, dated instead of summed.
     let xirr = portfolio_xirr(ledger, date, rate, &pnl)?;
     let ikze_flows = ikze_flows(ledger, date, rate)?;
-    let benchmark = vwce_benchmark(&contribution_flows(ledger, date, rate)?, date, |day| {
+    let contribution_flows = contribution_flows(ledger, date, rate)?;
+    let benchmark = vwce_benchmark(&contribution_flows, date, |day| {
         inputs.vwce_prices.get(&day).copied().flatten()
     });
     Ok(PortfolioReport {
@@ -187,6 +191,7 @@ pub fn report(
         attribution,
         xirr,
         ikze_flows,
+        contribution_flows,
         benchmark,
         problems: inputs.problems.clone(),
     })

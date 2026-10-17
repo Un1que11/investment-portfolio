@@ -1,6 +1,7 @@
 //! Print holdings, net contributions, value, P&L, each asset's contribution to it, XIRR, the
 //! "everything in VWCE" benchmark and the deviation from the target allocation in PLN for a date
-//! (default: today), the year's IKZE contributions against the limit, and optionally how to split
+//! (default: today), the same P&L, contributions, XIRR and benchmark gap for each period of the
+//! Overview (1M / 6M / YTD / 1Y / All, ending on the date), the year's IKZE contributions against the limit, and optionally how to split
 //! a top-up of N PLN (skipping classes paused in the config unless `include-paused` is given):
 //!
 //!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor] [N] [include-paused]
@@ -12,9 +13,11 @@
 use chrono::{Local, NaiveDate, Utc};
 use portfolio_core::allocation::Deviation;
 use portfolio_core::config::Config;
+use portfolio_core::period::PeriodError;
 use portfolio_sources::alphavantage::AlphaVantageClient;
 use portfolio_sources::kraken::KrakenClient;
 use portfolio_sources::nbp::NbpClient;
+use portfolio_sources::periods::period_views;
 use portfolio_sources::prices::Clock;
 use portfolio_sources::valuation::{Sources, portfolio_on};
 use rust_decimal::Decimal;
@@ -170,6 +173,34 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Err(e) => println!("Everything in VWCE: not available ({e})"),
+    }
+    let ledger = portfolio_db::transactions::load_ledger(&pool).await?;
+    let periods = period_views(&ledger, &r, &sources).await;
+    println!("Periods ending {date}:");
+    for v in &periods.views {
+        let since = v.since.map_or("-".into(), |d| d.to_string());
+        let pnl = v
+            .pnl()
+            .map_or("not available".into(), |p| format!("{} PLN", pln(p)));
+        let xirr = match &v.xirr {
+            Ok(rate) => format!("{} a year", pct(Some(*rate))),
+            Err(PeriodError::TooShort) => "-".into(),
+            Err(e) => format!("not available ({e})"),
+        };
+        let gap = match (v.benchmark_gap(), &v.benchmark) {
+            (Some(x), _) => format!("{} PLN", pln(x)),
+            (None, Err(e)) => format!("not available ({e})"),
+            (None, Ok(_)) => "not available".into(),
+        };
+        println!(
+            "  {:<3} from {since}: contributed {} PLN, P&L {pnl} ({}), XIRR {xirr}, vs all-in VWCE {gap}",
+            v.period.label(),
+            pln(v.contributions),
+            pct(v.pnl_ratio()),
+        );
+    }
+    for p in &periods.problems {
+        println!("  note: {p}");
     }
     let points = |x: Decimal| format!("{:+.2} pp", x * Decimal::ONE_HUNDRED);
     let line = |name: &str, d: &Deviation| {
