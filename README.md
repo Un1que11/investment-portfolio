@@ -137,19 +137,22 @@ PLN deviation within crypto is what would have to move between BTC and ETH. With
 every held asset there is no allocation.
 
 A third argument, an amount in PLN, adds a top-up plan: how to split that much new money between
-VWCE, BTC, ETH and gold to get closer to the targets without selling.
+VWCE, BTC, ETH and gold to get closer to the targets without selling. Classes paused in
+`config.toml` are skipped, with what each would need; a fourth argument `include-paused` buys
+them too.
 
 ```bash
 cargo run -p portfolio-sources --example portfolio -- 2026-10-14 0.95 2000
 ```
 
-With the new money the base grows by the amount, and each class's gap is its target share of the
-new base minus its value now. When no class is over its new target, every gap is bought and the
-portfolio lands on target. Otherwise overweight classes get nothing, and the biggest gaps are
-filled first down to a common level, so the classes that get money end the same PLN short of
-their targets. The crypto purchase is then split between BTC and ETH the same way, against the
-crypto split; if crypto is overweight, neither coin gets anything. Cash in the accounts is not
-counted, as in the allocation.
+The split follows the Allocation screen of the design. With the new money the base grows by the
+amount, and each class's need is its target share of the new base minus its value now (zero if it
+is already over). If the needs of the classes being bought add up to the amount or more, the
+amount is split pro rata to need. Otherwise, which only happens when a paused class is skipped,
+every need is bought and the rest is split between those classes by target weight. A paused class
+still counts in the base, and the plan reports what it would need. The crypto purchase is then
+split between BTC and ETH the same way, against the crypto split; if crypto gets nothing, neither
+coin does. Cash in the accounts is not counted, as in the allocation.
 
 The IKZE block covers the calendar year of the report date: what was deposited into IKZE accounts
 from 1 January up to the date, how much of that year's limit in `config.toml` is left, and the
@@ -166,6 +169,8 @@ Settings live in `config.toml` at the repository root (another file can be named
 
 - `[targets]`: target allocation in percent (`vwce`, `crypto`, `gold`), adding up to exactly 100;
   `[targets.crypto_split]` splits the crypto share between `btc` and `eth`, also adding up to 100.
+- `[paused]`: optional `vwce`, `crypto`, `gold` flags (`true`/`false`, default `false`). The
+  top-up plan skips a paused class unless asked to include it; its target still counts.
 - `[ikze.limits]`: the IKZE contribution limit in PLN per year (`2026 = "11304.00"`).
 - `[tax] rate_percent`: the income tax rate used to estimate the IKZE deduction (12 or 32).
 - `[gold] buyback_factor`: the share of melt value a dealer pays for a coin (above 0, at most 1.5).

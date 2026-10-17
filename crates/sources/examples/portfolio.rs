@@ -1,9 +1,9 @@
 //! Print holdings, net contributions, value, P&L, each asset's contribution to it, XIRR, the
 //! "everything in VWCE" benchmark and the deviation from the target allocation in PLN for a date
 //! (default: today), the year's IKZE contributions against the limit, and optionally how to split
-//! a top-up of N PLN:
+//! a top-up of N PLN (skipping classes paused in the config unless `include-paused` is given):
 //!
-//!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor] [N]
+//!     cargo run -p portfolio-sources --example portfolio -- [YYYY-MM-DD] [gold buyback factor] [N] [include-paused]
 //!
 //! Uses PORTFOLIO_DB_URL (default sqlite://portfolio.db) and ALPHAVANTAGE_API_KEY for VWCE
 //! (environment or `.env`). Targets and the gold buyback factor come from `config.toml` (or the
@@ -50,6 +50,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         None => config.gold_buyback_factor(),
     };
     let top_up = args.next().map(|s| s.parse::<Decimal>()).transpose()?;
+    let include_paused = match args.next().as_deref() {
+        None => false,
+        Some("include-paused") => true,
+        Some(other) => return Err(format!("unknown argument {other:?}").into()),
+    };
     let db_url =
         std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned());
     let pool = portfolio_db::open(&db_url).await?;
@@ -195,11 +200,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => println!("Allocation: not available ({e})"),
     }
     if let Some(amount) = top_up {
-        match r.top_up(&config, amount) {
+        match r.top_up(&config, amount, include_paused) {
             Ok(t) => {
                 println!("Top-up of {} PLN without selling, buy:", pln(amount));
                 for (s, buy) in &t.buys {
                     println!("  {:<11} {:>14} PLN", s.as_str(), pln(*buy));
+                }
+                for (class, need) in &t.would_need {
+                    println!(
+                        "  {:<11} paused, would need {} PLN",
+                        class.as_str(),
+                        pln(*need)
+                    );
                 }
                 println!("Deviation from target after it:");
                 for (class, d) in &t.after.by_class {
