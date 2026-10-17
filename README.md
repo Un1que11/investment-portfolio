@@ -217,7 +217,10 @@ cargo run -p portfolio-sync
 These must all pass before a PR is opened:
 
 ```bash
-cargo fmt --check
+cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
+
+GitHub Actions runs the same three checks on every pull request and on pushes to `main`
+(`.github/workflows/ci.yml`, Ubuntu runner, latest stable Rust).

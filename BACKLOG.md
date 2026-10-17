@@ -4,7 +4,7 @@
 - [x] P1. Cargo workspace: crates `core` (models and calculations), `web` (Axum), `sync` (sync binary). README with how to run.
 - [x] P2. SQLite schema and migrations: accounts, assets, transactions (buy/sell/deposit/fee/dividend), prices, fx_rates, snapshots. Decimal everywhere.
 - [x] P3. [light] `config.toml`: target shares, IKZE limits per year, tax rate, gold buyback factor. Validation: shares add up to 100%.
-- [ ] P4. [light] GitHub Actions: fmt + clippy + test on every PR.
+- [x] P4. [light] GitHub Actions: fmt + clippy + test on every PR.
 
 ## Phase 2 — data
 - [x] P5. NBP exchange rates (table A) with a DB cache and weekend handling (the last published rate is used).
