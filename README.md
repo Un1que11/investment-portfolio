@@ -211,7 +211,12 @@ comes from `config.toml` (or the file named by `PORTFOLIO_CONFIG`), and `ALPHAVA
 (environment or `.env`) prices VWCE; without it VWCE shows as unpriced.
 
 Pages:
-- `/`: redirects to `/gold` until the Overview (P20) is built to `design/`.
+- `/`: the Overview (`design/screens/01–03`): total value with the period's P&L, the XIRR and
+  Contributed tiles, and the value chart (value with its area, stepped net contributions, dashed
+  "if all had gone into VWCE"). `?period=1M|6M|YTD|1Y|All` (default All) picks the period and
+  `bench=off` hides the benchmark; the switch and the checkbox swap the panel through htmx and
+  push the URL. Chart days are the period's start (the first contribution for All), each month
+  end and today, priced through the same caches as the report. Problems with prices go to stderr.
 - `/gold`: add, list and delete physical gold coins (purchase date, price in PLN, fine gold
   weight, optional manual quote and label). Amounts may be typed with a decimal comma.
 - `/components`: the shared components (number tile, delta badge, progress and allocation

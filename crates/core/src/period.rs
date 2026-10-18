@@ -151,6 +151,47 @@ impl PeriodView {
     }
 }
 
+/// The contributions after `start` (all of them for None), up to the end of `end`.
+fn own_flows(
+    start: Option<NaiveDate>,
+    end: NaiveDate,
+    contributions: &[CashFlow],
+) -> Vec<CashFlow> {
+    contributions
+        .iter()
+        .filter(|f| start.is_none_or(|s| f.date > s) && f.date <= end)
+        .copied()
+        .collect()
+}
+
+/// The money the period's XIRR and benchmark start from: the start value as put in on the start
+/// day (left out when zero), then the period's own contributions. For All, just the
+/// contributions up to `end`. Arguments as for [`period_view`]; `start_value` is not used for
+/// All. The Overview chart replays the same flows into VWCE day by day.
+pub fn period_flows(
+    period: Period,
+    end: NaiveDate,
+    contributions: &[CashFlow],
+    start_value: Option<Decimal>,
+) -> Result<Vec<CashFlow>, PeriodError> {
+    let start = period.start(end);
+    let own = own_flows(start, end, contributions);
+    match start {
+        None => Ok(own),
+        Some(s) => {
+            let v = start_value.ok_or(PeriodError::MissingStartValue)?;
+            Ok((!v.is_zero())
+                .then_some(CashFlow {
+                    date: s,
+                    amount: -v,
+                })
+                .into_iter()
+                .chain(own)
+                .collect())
+        }
+    }
+}
+
 /// The view of `period` ending on `end`.
 ///
 /// - `contributions`: the portfolio's contributions as from
@@ -175,27 +216,13 @@ pub fn period_view(
     } else {
         Some(Decimal::ZERO)
     };
-    let own: Vec<CashFlow> = contributions
-        .iter()
-        .filter(|f| start.is_none_or(|s| f.date > s) && f.date <= end)
-        .copied()
-        .collect();
+    let own = own_flows(start, end, contributions);
     let since = match (start, start_value) {
         (Some(s), v) if v != Some(Decimal::ZERO) => Some(s),
         _ => own.iter().map(|f| f.date).min(),
     };
 
-    let flows: Result<Vec<CashFlow>, PeriodError> = match (start, start_value) {
-        (_, None) => Err(PeriodError::MissingStartValue),
-        (Some(s), Some(v)) if !v.is_zero() => Ok([CashFlow {
-            date: s,
-            amount: -v,
-        }]
-        .into_iter()
-        .chain(own.iter().copied())
-        .collect()),
-        _ => Ok(own.clone()),
-    };
+    let flows = period_flows(period, end, contributions, start_value);
     let benchmark = flows
         .clone()
         .and_then(|f| vwce_benchmark(&f, end, vwce_price).map_err(PeriodError::Benchmark));
@@ -540,5 +567,40 @@ mod tests {
 
         assert_eq!(v.contributions, dec!(-1000));
         assert_eq!((v.pnl(), v.pnl_ratio()), (Some(dec!(0)), None));
+    }
+
+    #[test]
+    fn period_flows_put_in_the_start_value_then_the_own_contributions() {
+        let flows = [
+            put("2026-01-10", dec!(1000)),
+            put("2026-09-20", dec!(500)),
+            put("2026-10-01", dec!(-200)),
+            put("2026-10-20", dec!(300)),
+        ];
+        let end = d("2026-10-17");
+        // 1M starts 17 Sep: 4000 held then goes in that day, then +500 and -200; the 10 Jan
+        // contribution is inside the start value and 20 Oct is after the end.
+        assert_eq!(
+            period_flows(Period::OneMonth, end, &flows, Some(dec!(4000))).unwrap(),
+            [
+                put("2026-09-17", dec!(4000)),
+                put("2026-09-20", dec!(500)),
+                put("2026-10-01", dec!(-200)),
+            ]
+        );
+        // Nothing held at the start: no zero flow on the start day.
+        assert_eq!(
+            period_flows(Period::OneMonth, end, &flows, Some(dec!(0))).unwrap(),
+            [put("2026-09-20", dec!(500)), put("2026-10-01", dec!(-200))]
+        );
+        // All ignores the start value and takes every contribution up to the end.
+        assert_eq!(
+            period_flows(Period::All, end, &flows, None).unwrap(),
+            flows[..3]
+        );
+        assert_eq!(
+            period_flows(Period::SixMonths, end, &flows, None),
+            Err(PeriodError::MissingStartValue)
+        );
     }
 }
