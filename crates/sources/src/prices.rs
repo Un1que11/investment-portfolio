@@ -163,11 +163,33 @@ async fn cached_close(
         }))
 }
 
+/// Whether the next stored close after `day` lies more than `MAX_GAP_DAYS` after `earlier`, the
+/// close that would answer `day`. Then the two closes came from separate fetches (the app was not
+/// run for longer than the provider's window), and the days between them were never fetched:
+/// they are missing data, not a market holiday.
+async fn gap_after(
+    pool: &SqlitePool,
+    asset_id: i64,
+    day: NaiveDate,
+    earlier: NaiveDate,
+) -> Result<bool, sqlx::Error> {
+    let bridged = cache::closes_between(
+        pool,
+        asset_id,
+        day + Days::new(1),
+        earlier + Days::new(MAX_GAP_DAYS),
+    )
+    .await?;
+    Ok(bridged.is_empty() && cache::has_close_after(pool, asset_id, day).await?)
+}
+
 /// The close that applies on `day`: that day's, or the last trading day's before it.
 ///
-/// Answered from the cache when it can be: an exact close, or an earlier one when a later close
-/// is stored too (so the gap is known to be a market holiday). Otherwise the provider's recent
-/// series is fetched and cached, at most once per the provider's `MIN_REFETCH_INTERVAL`.
+/// Answered from the cache when it can be: an exact close, or an earlier one when a close within
+/// `MAX_GAP_DAYS` after it is stored too (so the gap is known to be a market holiday). Otherwise
+/// the provider's recent series is fetched and cached, at most once per the provider's
+/// `MIN_REFETCH_INTERVAL`. An earlier close is never used across a longer gap in the cache: the
+/// day is then [`PriceError::NoPrice`] (for VWCE that triggers the weekly backfill).
 pub async fn close_on_day<S: DailySource>(
     pool: &SqlitePool,
     provider: &S,
@@ -199,14 +221,16 @@ pub async fn close_on_day<S: DailySource>(
     }
     if cache::has_close_after(pool, asset_id, day).await?
         && let Some(quote) = cached_close(pool, asset_id, day).await?
+        && !gap_after(pool, asset_id, day, quote.date).await?
     {
         return Ok(quote);
     }
 
     refresh_daily(pool, provider, instrument, asset_id, clock).await?;
-    cached_close(pool, asset_id, day)
-        .await?
-        .ok_or(PriceError::NoPrice(instrument.symbol, day))
+    match cached_close(pool, asset_id, day).await? {
+        Some(quote) if !gap_after(pool, asset_id, day, quote.date).await? => Ok(quote),
+        _ => Err(PriceError::NoPrice(instrument.symbol, day)),
+    }
 }
 
 /// Fetches and caches the provider's recent daily series unless it was fetched within the

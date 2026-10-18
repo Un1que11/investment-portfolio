@@ -505,3 +505,71 @@ async fn weekly_notice_is_reported() {
 
     assert!(matches!(err, PriceError::Provider(_)), "{err}");
 }
+
+/// Stores one close per `(day, close)`, each written by its own fetch at `fetched_at`.
+async fn store_closes(pool: &SqlitePool, closes: &[(&str, &str, &str)]) -> i64 {
+    use portfolio_core::price::DailyClose;
+    use portfolio_db::prices::{ensure_asset, upsert_closes};
+    let id = ensure_asset(pool, VWCE.symbol, VWCE.name, VWCE.class, VWCE.currency)
+        .await
+        .unwrap();
+    for (day, close, fetched_at) in closes {
+        let close = DailyClose {
+            date: d(day),
+            close: dec(close),
+        };
+        let at: DateTime<Utc> = fetched_at.parse().unwrap();
+        upsert_closes(pool, id, VWCE.currency, VWCE.provider, &[close], at)
+            .await
+            .unwrap();
+    }
+    id
+}
+
+#[tokio::test]
+async fn an_earlier_close_is_not_used_across_a_gap_between_two_fetches() {
+    // A close for Fri 9 Jan from a fetch in January, and the next one, 1 Jun, from a fetch in
+    // June: nothing was fetched in between. 16 Jan is not a holiday after 9 Jan (the next close
+    // is 143 days later, past MAX_GAP_DAYS), so the 9 Jan close must not answer it. The daily
+    // series was fetched two hours ago, so no request is made either.
+    let s = setup().await;
+    store_closes(
+        &s.pool,
+        &[
+            ("2026-01-09", "100", "2026-01-10T10:00:00Z"),
+            ("2026-06-01", "150", "2026-06-01T10:00:00Z"),
+        ],
+    )
+    .await;
+    let clock = clock("2026-06-01T12:00:00Z");
+
+    let result = close_on_day(&s.pool, &s.av, &VWCE, d("2026-01-16"), clock).await;
+
+    assert!(
+        matches!(result, Err(PriceError::NoPrice("VWCE", day)) if day == d("2026-01-16")),
+        "{result:?}"
+    );
+    assert!(s.server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_earlier_close_still_answers_a_holiday_inside_one_series() {
+    // Fri 9 Jan and Mon 12 Jan are stored: Sat 10 Jan takes Friday's close from the cache.
+    let s = setup().await;
+    store_closes(
+        &s.pool,
+        &[
+            ("2026-01-09", "100", "2026-01-13T10:00:00Z"),
+            ("2026-01-12", "101", "2026-01-13T10:00:00Z"),
+        ],
+    )
+    .await;
+    let clock = clock("2026-06-01T12:00:00Z");
+
+    let quote = close_on_day(&s.pool, &s.av, &VWCE, d("2026-01-10"), clock)
+        .await
+        .unwrap();
+
+    assert_eq!((quote.date, quote.close), (d("2026-01-09"), dec("100")));
+    assert!(s.server.received_requests().await.unwrap().is_empty());
+}
