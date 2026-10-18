@@ -359,6 +359,52 @@ async fn api_error_is_reported_and_nothing_is_stored() {
 }
 
 #[tokio::test]
+async fn a_sync_that_fails_on_a_later_page_stores_nothing_and_the_next_one_gets_everything() {
+    // Page 1 (the newest entries) arrives, page 2 hits Kraken's rate limit. Had page 1 been
+    // stored, the next run would start after its newest entry and never fetch page 2.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/0/private/Ledgers"))
+        .and(body_string_contains("ofs=0"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(PAGE1))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/0/private/Ledgers"))
+        .and(body_string_contains("ofs=10"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string(r#"{"error":["EAPI:Rate limit exceeded"]}"#),
+        )
+        .mount(&server)
+        .await;
+    let pool = open_in_memory().await.unwrap();
+
+    let err = sync(&pool, &client(&server), Duration::ZERO)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("EAPI:Rate limit exceeded"),
+        "{err}"
+    );
+    assert_eq!(count(&pool, "kraken_ledger").await, 0);
+
+    // The next run starts from scratch (no `start`) and gets both pages.
+    server.reset().await;
+    for (ofs, body) in [("ofs=0", PAGE1), ("ofs=10", PAGE2)] {
+        Mock::given(method("POST"))
+            .and(path("/0/private/Ledgers"))
+            .and(body_string_contains(ofs))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    let summary = sync(&pool, &client(&server), Duration::ZERO).await.unwrap();
+    assert_eq!((summary.fetched, summary.new_entries), (18, 18));
+    assert_eq!(count(&pool, "kraken_ledger").await, 18);
+}
+
+#[tokio::test]
 async fn balance_is_read_with_a_signed_request() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

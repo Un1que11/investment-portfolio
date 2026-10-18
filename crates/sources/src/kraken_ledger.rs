@@ -359,6 +359,10 @@ impl From<LedgerEntry> for RawLedgerEntry {
 /// Fetches ledger entries newer than the newest stored one (all of them on the first run),
 /// stores them, and maps every stored entry into transactions. `pause` is waited between
 /// pages to stay under Kraken's rate limit.
+///
+/// Pages come newest first and the next run starts after the newest stored entry, so the
+/// entries are stored only once every page has arrived: storing the first pages of a run that
+/// then fails would make the next run skip the older entries it never got.
 pub async fn sync(
     pool: &SqlitePool,
     client: &KrakenPrivateClient,
@@ -367,6 +371,7 @@ pub async fn sync(
     let start = raw::latest_entry_id(pool).await?;
     let mut summary = SyncSummary::default();
     let mut ofs = 0;
+    let mut rows: Vec<RawLedgerEntry> = Vec::new();
     loop {
         if ofs > 0 && !pause.is_zero() {
             tokio::time::sleep(pause).await;
@@ -377,12 +382,12 @@ pub async fn sync(
         }
         ofs += page.entries.len() as u64;
         summary.fetched += page.entries.len();
-        let rows: Vec<RawLedgerEntry> = page.entries.into_iter().map(Into::into).collect();
-        summary.new_entries += raw::insert_entries(pool, &rows).await?;
+        rows.extend(page.entries.into_iter().map(RawLedgerEntry::from));
         if ofs >= page.count {
             break;
         }
     }
+    summary.new_entries = raw::insert_entries(pool, &rows).await?;
 
     let mapped = map_entries(&raw::all_entries(pool).await?)?;
     let assets: Vec<Asset> = CRYPTO.iter().map(|(_, a)| *a).collect();
