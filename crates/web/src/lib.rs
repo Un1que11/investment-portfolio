@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use chrono::{DateTime, NaiveDate, Utc};
 use portfolio_sources::alphavantage::AlphaVantageClient;
@@ -16,8 +16,10 @@ use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 
 pub mod base;
+pub mod chart;
 pub mod format;
 pub mod gold;
+pub mod overview;
 
 /// Price sources (read-only) and the settings the valuation needs.
 pub struct Market {
@@ -73,7 +75,7 @@ impl AppState {
 /// Builds the application router. Kept separate from `main` so tests can drive it in-process.
 pub fn app(state: AppState) -> Router {
     Router::new()
-        .route("/", get(|| async { Redirect::to("/gold") }))
+        .route("/", get(overview::show))
         .route("/health", get(health))
         .route("/gold", get(gold::show))
         .route("/gold/coins", post(gold::add))

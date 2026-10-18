@@ -10,6 +10,7 @@ use portfolio_db::transactions::{
     Account, Asset, NewTransaction, insert_transactions, load_ledger,
 };
 use portfolio_sources::alphavantage::AlphaVantageClient;
+use portfolio_sources::history::period_chart;
 use portfolio_sources::kraken::KrakenClient;
 use portfolio_sources::nbp::NbpClient;
 use portfolio_sources::periods::period_views;
@@ -278,4 +279,129 @@ async fn start_days_before_the_first_contribution_need_no_vwce_price() {
         assert_eq!(v.xirr, Err(PeriodError::TooShort), "{}", v.period);
     }
     assert!(p.problems.is_empty(), "{:?}", p.problems);
+}
+
+#[tokio::test]
+async fn the_chart_replays_each_periods_flows_into_vwce() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path_regex(r"^/exchangerates/rates/a/eur/.*"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(EUR_OCT))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/query"))
+        .and(query_param("function", "TIME_SERIES_DAILY"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(VWCE_DAILY))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // The 1M chart starts on 14 Sep, before the daily closes, but nothing is held then.
+    Mock::given(method("GET"))
+        .and(path("/query"))
+        .and(query_param("function", "TIME_SERIES_WEEKLY"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let pool = open_in_memory().await.unwrap();
+    // The same deposits as above: 1516.5059 PLN on 5 Oct, 756.69465 PLN on 11 Oct, 173.48 EUR
+    // on 12 Oct.
+    let deposit = |day, amount, currency, id| row("deposit", day, None, None, amount, currency, id);
+    insert_transactions(
+        &pool,
+        Account {
+            name: "XTB IKZE",
+            kind: "ikze",
+            provider: "xtb",
+            currency: "PLN",
+        },
+        &[],
+        "xtb",
+        &[
+            deposit("2026-10-05", dec!(1516.5059), "PLN", "b1"),
+            deposit("2026-10-11", dec!(756.69465), "PLN", "b2"),
+        ],
+    )
+    .await
+    .unwrap();
+    insert_transactions(
+        &pool,
+        KRAKEN,
+        &[],
+        "kraken",
+        &[deposit("2026-10-12", dec!(173.48), "EUR", "b3")],
+    )
+    .await
+    .unwrap();
+    let nbp = NbpClient::with_base_url(server.uri()).unwrap();
+    let kraken = KrakenClient::with_base_url(server.uri()).unwrap();
+    let av = AlphaVantageClient::new(server.uri(), "test-key")
+        .unwrap()
+        .with_request_spacing(std::time::Duration::from_millis(10));
+    let s = Sources {
+        pool: &pool,
+        nbp: &nbp,
+        kraken: &kraken,
+        alphavantage: Some(&av),
+        clock: clock(),
+        gold_buyback_factor: Decimal::ONE,
+    };
+    let ledger = load_ledger(&pool).await.unwrap();
+    let r = portfolio_on(d("2026-10-14"), &s).await.unwrap();
+
+    // All: the first contribution and the end day. On 5 Oct the 1516.5059 PLN is all there is,
+    // in cash and in VWCE alike; on 14 Oct the values of the test above.
+    let all = period_chart(&ledger, &r, Period::All, &s).await;
+    assert!(all.problems.is_empty(), "{:?}", all.problems);
+    let points: Vec<_> = all
+        .points
+        .iter()
+        .map(|p| {
+            (
+                p.date,
+                p.contributions,
+                p.value,
+                p.benchmark.map(|b| b.round_dp(6)),
+            )
+        })
+        .collect();
+    assert_eq!(
+        points,
+        [
+            (
+                d("2026-10-05"),
+                Some(dec!(1516.5059)),
+                Some(dec!(1516.5059)),
+                Some(dec!(1516.5059))
+            ),
+            (
+                d("2026-10-14"),
+                Some(dec!(3034.586922)),
+                Some(dec!(3031.412238)),
+                Some(dec!(3015.364352))
+            ),
+        ]
+    );
+
+    // 1M: 14 Sep, 30 Sep (both before anything was put in: 0 everywhere) and 14 Oct.
+    let month = period_chart(&ledger, &r, Period::OneMonth, &s).await;
+    assert!(month.problems.is_empty(), "{:?}", month.problems);
+    let points: Vec<_> = month
+        .points
+        .iter()
+        .map(|p| (p.date, p.value, p.benchmark.map(|b| b.round_dp(6))))
+        .collect();
+    assert_eq!(
+        points,
+        [
+            (d("2026-09-14"), Some(dec!(0)), Some(dec!(0))),
+            (d("2026-09-30"), Some(dec!(0)), Some(dec!(0))),
+            (
+                d("2026-10-14"),
+                Some(dec!(3031.412238)),
+                Some(dec!(3015.364352))
+            ),
+        ]
+    );
 }

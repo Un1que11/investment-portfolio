@@ -1,0 +1,89 @@
+{#- The Overview's hero, tiles and chart (design/reference/01-overview.html; the phone layout of
+    03-overview-phone.html comes from the ov-* rules in app.css). htmx swaps the whole panel. -#}
+{%- macro period_switch(class) %}
+<nav aria-label="Period" class="seg {{ class }}">
+  {%- for p in periods %}
+  <a href="{{ p.href }}" hx-get="{{ p.href }}" hx-target="#overview" hx-swap="outerHTML" hx-push-url="true"{% if p.current %} aria-current="true"{% endif %}>{{ p.label }}</a>
+  {%- endfor %}
+</nav>
+{%- endmacro -%}
+<div id="overview" style="display: flex; flex-direction: column; gap: 32px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px">
+<h1 style="margin: 0; font-size: 15px; font-weight: 500; color: var(--text-2); letter-spacing: 0">Overview</h1>
+{% call period_switch("ov-desk") %}{% endcall %}
+</header>
+
+<section aria-label="Portfolio summary" style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 32px 48px">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<div style="font-size: 13px; color: var(--text-3)">Total value</div>
+<div class="hero-num" style="font-size: 64px; line-height: 1; font-weight: 500; letter-spacing: -0.035em">{{ total }}<span style="font-size: 0.45em; font-weight: 400; color: var(--text-2); letter-spacing: 0; margin-left: 10px">zł</span></div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 14px">
+{%- if let Some(d) = pnl %}
+<span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 8px; font-weight: 500; background: {{ d.tone.soft() }}; color: {{ d.tone.color() }}">{% if !d.arrow().is_empty() %}{{ d.arrow() }}&nbsp;{% endif %}{{ d.text }}</span>
+{%- endif %}
+{%- if let Some(d) = pnl_percent %}
+<span style="font-weight: 500; color: {{ d.tone.color() }}">{{ d.text }}</span>
+{%- endif %}
+<span style="color: var(--text-3)">{{ caption }}</span>
+{%- if incomplete %}
+<span style="color: var(--warn)">Some prices are missing, so the total is understated</span>
+{%- endif %}
+</div>
+</div>
+{% call period_switch("ov-phone") %}{% endcall %}
+<div class="ov-tiles" style="display: flex; flex-wrap: wrap; gap: 12px">
+<div style="min-width: 180px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px">
+<div style="font-size: 12px; color: var(--text-3)">XIRR · money-weighted</div>
+<div style="font-size: 22px; font-weight: 500; letter-spacing: -0.02em; color: {{ xirr.color }}">{{ xirr.figure }}</div>
+<div style="font-size: 12px; color: var(--text-3)">{{ xirr.note }}</div>
+</div>
+<div style="min-width: 180px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px">
+<div style="font-size: 12px; color: var(--text-3)">Contributed</div>
+<div style="font-size: 22px; font-weight: 500; letter-spacing: -0.02em">{{ contributed }}</div>
+<div style="font-size: 12px; color: var(--text-3)">{{ contributed_note }}</div>
+</div>
+</div>
+</section>
+
+<section aria-label="Value over time" class="ov-card" style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px 24px 20px; display: flex; flex-direction: column; gap: 20px; box-shadow: var(--shadow)">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px">
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; font-size: 13px; color: var(--text-2)">
+<span style="display: flex; align-items: center; gap: 8px"><span style="width: 16px; height: 2px; background: var(--accent); border-radius: 1px"></span>Portfolio value</span>
+<span style="display: flex; align-items: center; gap: 8px"><span style="width: 16px; height: 0; border-top: 2px solid var(--text-3)"></span>Contributed</span>
+<label style="display: flex; align-items: center; gap: 8px; cursor: pointer"><input type="checkbox"{% if bench %} checked{% endif %} hx-get="{{ bench_toggle }}" hx-target="#overview" hx-swap="outerHTML" hx-push-url="true" style="width: 15px; height: 15px; margin: 0; accent-color: var(--accent)"><span style="width: 16px; height: 0; border-top: 2px dashed var(--text-2)"></span>If all had gone into VWCE</label>
+</div>
+<div style="font-size: 13px; color: var(--text-3)">{{ bench_note }}</div>
+</div>
+{%- if let Some(c) = chart %}
+<div class="ov-plot" style="position: relative; height: 300px">
+{%- for t in c.y_ticks %}
+<div class="ov-ytick" style="position: absolute; left: 0; right: 0; top: {{ t.top }}%; display: flex; align-items: center; gap: 12px; transform: translateY(-50%)"><span style="width: 52px; flex: 0 0 52px; text-align: right; font-size: 11px; color: var(--text-3)">{{ t.label }}</span><span style="flex: 1 1 auto; height: 0; border-top: 1px solid var(--line)"></span></div>
+{%- endfor %}
+<div class="ov-area" style="position: absolute; left: 64px; right: 0; top: 0; bottom: 0">
+<svg width="100%" height="100%" viewBox="0 0 1000 300" preserveAspectRatio="none" role="img" aria-label="{{ chart_label }}" style="display: block; overflow: visible">
+{%- if !c.area_path.is_empty() %}
+<path d="{{ c.area_path }}" fill="var(--accent)" fill-opacity="0.07" stroke="none"></path>
+{%- endif %}
+<path d="{{ c.contributions_path }}" fill="none" stroke="var(--text-3)" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"></path>
+{%- if !c.benchmark_path.is_empty() %}
+<path d="{{ c.benchmark_path }}" fill="none" stroke="var(--text-2)" stroke-width="1.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke" stroke-linejoin="round"></path>
+{%- endif %}
+<path d="{{ c.value_path }}" fill="none" stroke="var(--accent)" stroke-width="2.25" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"></path>
+</svg>
+{%- if let Some((left, top)) = c.end_dot %}
+<span style="position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--surface); left: {{ left }}%; top: {{ top }}%; transform: translate(-50%, -50%)"></span>
+{%- endif %}
+</div>
+</div>
+<div class="ov-xaxis" style="position: relative; height: 16px; margin-left: 64px">
+{%- for x in c.x_ticks %}
+<span style="position: absolute; top: 0; left: {{ x.left }}%; transform: translateX({{ x.shift }}); font-size: 11px; color: var(--text-3); white-space: nowrap">{{ x.label }}</span>
+{%- endfor %}
+</div>
+{%- else %}
+<p style="margin: 0; font-size: 13px; color: var(--text-3)">Nothing to chart yet: no contributions.</p>
+{%- endif %}
+</section>
+
+</div>

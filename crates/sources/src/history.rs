@@ -10,7 +10,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
-use portfolio_core::history::{ValuePoint, value_point};
+use portfolio_core::benchmark::{benchmark_series, price_days};
+use portfolio_core::history::{ValuePoint, chart_dates, value_point};
+use portfolio_core::period::{Period, period_flows};
 use portfolio_core::portfolio::{LedgerTx, holdings_on, net_contributions_on};
 use portfolio_db::gold::{self as coins, Coin};
 use rust_decimal::Decimal;
@@ -18,7 +20,7 @@ use rust_decimal::Decimal;
 use crate::fx::{FxError, rate_on_day};
 use crate::gold::{GoldValuationError, coin_value_on_day};
 use crate::prices::{PriceError, VWCE, value_in_pln};
-use crate::valuation::{GOLD_COINS, Sources, instrument, vwce_prices};
+use crate::valuation::{GOLD_COINS, PortfolioReport, Sources, instrument, vwce_prices};
 
 const NBP: &str = "nbp";
 const KRAKEN: &str = "kraken";
@@ -139,6 +141,82 @@ pub async fn value_series(
         ));
     }
     ValueSeries { points, problems }
+}
+
+/// One day of the Overview chart.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChartPoint {
+    pub date: NaiveDate,
+    /// Net contributions since the very start (not just the period's).
+    pub contributions: Option<Decimal>,
+    pub value: Option<Decimal>,
+    /// What everything put in over the period would be worth in VWCE that day.
+    pub benchmark: Option<Decimal>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PeriodChart {
+    pub points: Vec<ChartPoint>,
+    /// Why some points have no value or benchmark, for the page.
+    pub problems: Vec<String>,
+}
+
+/// The Overview chart of `period`, ending on the report's date: the period's start day (the
+/// first contribution for All), the end of every month after it and the end day
+/// ([`chart_dates`]). The benchmark replays the period's flows ([`period_flows`]: the start
+/// value, then the contributions) into VWCE, so it starts at the value line, as in the design.
+/// Empty when nothing was ever put in.
+pub async fn period_chart(
+    ledger: &[LedgerTx],
+    report: &PortfolioReport,
+    period: Period,
+    s: &Sources<'_>,
+) -> PeriodChart {
+    let end = report.date;
+    let Some(first) = report.contribution_flows.iter().map(|f| f.date).min() else {
+        return PeriodChart::default();
+    };
+    let dates = chart_dates(period.start(end).unwrap_or(first), end);
+    let series = value_series(ledger, &dates, s).await;
+    let mut problems = series.problems;
+
+    let start_value = series.points.first().and_then(|p| p.value);
+    let benchmark: Vec<Option<Decimal>> =
+        match period_flows(period, end, &report.contribution_flows, start_value) {
+            Ok(flows) => {
+                // Only days with units held need a price: asking for one older than the daily
+                // closes would spend Alpha Vantage requests on the weekly history for nothing.
+                let mut days = price_days(&flows, end);
+                if let Some(first_flow) = flows.iter().map(|f| f.date).min() {
+                    days.extend(dates.iter().filter(|d| **d >= first_flow));
+                }
+                let (vwce, problem) = vwce_prices(&days, s).await;
+                if let Some(p) = problem {
+                    problems.push(format!("chart, VWCE benchmark: {p}"));
+                }
+                benchmark_series(&flows, &dates, |d| vwce.get(&d).copied().flatten())
+                    .into_iter()
+                    .map(Result::ok)
+                    .collect()
+            }
+            Err(e) => {
+                problems.push(format!("chart, VWCE benchmark: {e}"));
+                vec![None; dates.len()]
+            }
+        };
+
+    let points = series
+        .points
+        .into_iter()
+        .zip(benchmark)
+        .map(|(p, benchmark)| ChartPoint {
+            date: p.date,
+            contributions: p.contributions,
+            value: p.value,
+            benchmark,
+        })
+        .collect();
+    PeriodChart { points, problems }
 }
 
 /// Every coin bought by `date`, valued on it.

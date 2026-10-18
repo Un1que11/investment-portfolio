@@ -145,6 +145,20 @@ pub fn vwce_benchmark(
     })
 }
 
+/// The benchmark's value on each of `dates`: `flows` up to that day replayed into VWCE
+/// ([`vwce_benchmark`]), for the Overview chart's dashed line. `price` is asked for the flows'
+/// days and each date on which units are held.
+pub fn benchmark_series(
+    flows: &[CashFlow],
+    dates: &[NaiveDate],
+    mut price: impl FnMut(NaiveDate) -> Option<Decimal>,
+) -> Vec<Result<Decimal, BenchmarkError>> {
+    dates
+        .iter()
+        .map(|d| vwce_benchmark(flows, *d, &mut price).map(|b| b.value))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -353,6 +367,38 @@ mod tests {
         assert_eq!(
             price_days(&flows, d("2026-03-31")),
             BTreeSet::from([d("2026-01-05"), d("2026-02-02"), d("2026-03-31")])
+        );
+    }
+
+    #[test]
+    fn series_values_the_flows_so_far_on_each_day() {
+        // 1000 at 100 = 10 units on 5 Jan; 31 Jan at 110: 10 x 110 = 1100. 2 Feb: 1500 at 125 =
+        // 12 more; 28 Feb at 120: 22 x 120 = 2640. 1 Jan: nothing put in yet, worth 0 with no
+        // price needed. 31 Mar has no price: that day alone is missing.
+        let flows = [put("2026-01-05", dec!(1000)), put("2026-02-02", dec!(1500))];
+        let series = benchmark_series(
+            &flows,
+            &[
+                d("2026-01-01"),
+                d("2026-01-31"),
+                d("2026-02-28"),
+                d("2026-03-31"),
+            ],
+            prices(&[
+                ("2026-01-05", dec!(100)),
+                ("2026-01-31", dec!(110)),
+                ("2026-02-02", dec!(125)),
+                ("2026-02-28", dec!(120)),
+            ]),
+        );
+        assert_eq!(
+            series,
+            [
+                Ok(dec!(0)),
+                Ok(dec!(1100)),
+                Ok(dec!(2640)),
+                Err(BenchmarkError::MissingPrice(d("2026-03-31")))
+            ]
         );
     }
 }

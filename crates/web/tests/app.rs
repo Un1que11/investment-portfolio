@@ -168,11 +168,10 @@ async fn health_and_root() {
     let (router, _) = setup().await;
 
     assert_eq!(send(&router, get("/health")).await.1, "ok");
-    let (status, _, location) = send(&router, get("/")).await;
-    assert_eq!(
-        (status, location.as_deref()),
-        (StatusCode::SEE_OTHER, Some("/gold"))
-    );
+    // The Overview: with nothing put in yet there is nothing to chart.
+    let (status, body, _) = send(&router, get("/")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Nothing to chart yet"), "{body}");
     assert_eq!(send(&router, get("/nope")).await.0, StatusCode::NOT_FOUND);
 }
 

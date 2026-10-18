@@ -66,3 +66,23 @@
 .legacy form.add button{border:0;background:var(--text);color:var(--bg);font-weight:500}
 .legacy .error{font-size:12px;color:var(--loss)}
 .legacy .muted{color:var(--text-3)}
+
+/* Overview period switch: links rather than buttons, so each period has its own URL. */
+.seg a{min-width:44px;height:30px;padding:0 12px;box-sizing:border-box;border-radius:7px;font-size:13px;font-weight:500;color:var(--text-2);display:inline-flex;align-items:center;justify-content:center}
+.seg a:hover{color:var(--text)}
+.seg a[aria-current=true]{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.ov-phone{display:none}
+
+/* Overview on phones (screens/03): the switch under the hero across the full width, the tiles
+   side by side, a shorter chart without the y labels and only the first and last x labels. */
+@media (max-width:760px){
+.ov-desk{display:none}
+.ov-phone{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-self:stretch;width:100%}
+.ov-tiles{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:10px!important}
+.ov-tiles>div{min-width:0!important;padding:14px!important}
+.ov-card{padding:16px!important;gap:12px!important;border-radius:14px!important}
+.ov-plot{height:180px!important}
+.ov-ytick span:first-child{display:none}
+.ov-area,.ov-xaxis{left:0!important;margin-left:0!important}
+.ov-xaxis span:not(:first-child):not(:last-child){display:none}
+}
