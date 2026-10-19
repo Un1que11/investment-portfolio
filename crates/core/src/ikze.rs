@@ -116,6 +116,91 @@ pub fn ikze_year(flows: &IkzeFlows, config: &Config) -> Result<IkzeYear, IkzeErr
     })
 }
 
+/// IKZE deposits in each month of the calendar year of `date`, up to the end of `date`, in PLN
+/// (index 0 is January). The same deposits as [`ikze_flows`], so they add up to its
+/// `contributed`.
+pub fn monthly_contributions(
+    txs: &[LedgerTx],
+    date: NaiveDate,
+    mut rate: impl FnMut(&str, NaiveDate) -> Option<Decimal>,
+) -> Result<[Decimal; 12], MissingRate> {
+    let mut months = [Decimal::ZERO; 12];
+    let year = date.year();
+    for tx in txs.iter().filter(|t| {
+        t.wrapper == Some(Wrapper::Ikze)
+            && t.kind == TxKind::Deposit
+            && t.date.year() == year
+            && t.date <= date
+    }) {
+        months[tx.date.month0() as usize] += in_pln(tx, &mut rate)?;
+    }
+    Ok(months)
+}
+
+/// How to fill the rest of the year's limit before 31 December (the IKZE screen's reminder).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopUpReminder {
+    /// Days from today to 31 December (0 on 31 December itself).
+    pub days_left: i64,
+    /// Average paid in per month, from the first month with a contribution this year to the
+    /// last finished one (the current month counts once something is paid in it). None when
+    /// nothing has been paid in this year.
+    pub pace: Option<Decimal>,
+    /// Paid in so far plus `pace` for each month in `months`: where the year ends at that pace.
+    pub projected: Option<Decimal>,
+    /// The months (1–12) left to top up in: the current one while nothing is paid in it, and
+    /// every later one. Only December when December is current and already has a payment.
+    pub months: Vec<u32>,
+    /// The remaining limit split evenly over `months`, rounded down to the grosz so that the
+    /// top-ups never go over the limit (they can fall short of it by a few grosze).
+    pub each: Decimal,
+}
+
+/// The reminder for `year` on `today` (in that year), from the contributions per month. None
+/// when nothing of the limit is left.
+pub fn top_up_reminder(
+    year: &IkzeYear,
+    monthly: &[Decimal; 12],
+    today: NaiveDate,
+) -> Option<TopUpReminder> {
+    if year.remaining <= Decimal::ZERO {
+        return None;
+    }
+    let current = today.month0() as usize;
+    let year_end = NaiveDate::from_ymd_opt(today.year(), 12, 31).expect("31 December");
+    let paid_now = !monthly[current].is_zero();
+
+    let last_counted = if paid_now {
+        Some(current)
+    } else {
+        current.checked_sub(1)
+    };
+    let first_paid = monthly.iter().position(|m| !m.is_zero());
+    let pace = match (first_paid, last_counted) {
+        (Some(first), Some(last)) if first <= last => {
+            let paid: Decimal = monthly[first..=last].iter().sum();
+            Some(paid / Decimal::from(last - first + 1))
+        }
+        _ => None,
+    };
+
+    let first_left = if paid_now { current + 1 } else { current };
+    let mut months: Vec<u32> = (first_left..12).map(|m| m as u32 + 1).collect();
+    if months.is_empty() {
+        months.push(12);
+    }
+    let count = Decimal::from(months.len());
+    let each =
+        (year.remaining / count).round_dp_with_strategy(2, rust_decimal::RoundingStrategy::ToZero);
+    Some(TopUpReminder {
+        days_left: (year_end - today).num_days(),
+        projected: pace.map(|p| year.contributed + p * count),
+        pace,
+        months,
+        each,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,6 +417,142 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "no IKZE limit for 2027 in the config; add it under [ikze.limits]"
+        );
+    }
+
+    /// The design's year (screens/05): 942 paid in each month from May to October 2026.
+    fn design_months() -> [Decimal; 12] {
+        let mut m = [dec!(0); 12];
+        for month in &mut m[4..10] {
+            *month = dec!(942);
+        }
+        m
+    }
+
+    fn year_with(contributed: Decimal) -> IkzeYear {
+        ikze_year(
+            &IkzeFlows {
+                year: 2026,
+                contributed,
+                withdrawn: dec!(0),
+            },
+            &config(12),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn monthly_contributions_split_the_years_deposits_by_month() {
+        // Jan: 3000 + 500 = 3500; Jun: 2500.50. Not counted: the purchase, last year's deposit
+        // and the deposit after the date. They add up to ikze_flows' 6000.50.
+        let txs = [
+            ikze("2025-12-31", TxKind::Deposit, dec!(5000)),
+            ikze("2026-01-15", TxKind::Deposit, dec!(3000)),
+            ikze("2026-01-31", TxKind::Deposit, dec!(500)),
+            ikze("2026-01-31", TxKind::Buy, dec!(3400)),
+            ikze("2026-06-01", TxKind::Deposit, dec!(2500.50)),
+            ikze("2026-10-20", TxKind::Deposit, dec!(2000)),
+        ];
+        let m = monthly_contributions(&txs, d("2026-10-16"), pln_only).unwrap();
+
+        let mut expected = [dec!(0); 12];
+        expected[0] = dec!(3500);
+        expected[5] = dec!(2500.50);
+        assert_eq!(m, expected);
+        let total: Decimal = m.iter().sum();
+        let flows = ikze_flows(&txs, d("2026-10-16"), pln_only).unwrap();
+        assert_eq!(total, flows.contributed);
+    }
+
+    #[test]
+    fn the_reminder_of_the_design() {
+        // 16 Oct 2026, 942 paid in each month May–Oct: 5652 of 11 304, 5652 left.
+        // Days left: 15 in October + 30 + 31 = 76. Pace: 5652 / 6 months (May–Oct) = 942.
+        // October is paid, so the top-ups go in November and December: 5652 / 2 = 2826 each.
+        // At 942 a month: 5652 + 2 x 942 = 7536.
+        let r = top_up_reminder(&year_with(dec!(5652)), &design_months(), d("2026-10-16")).unwrap();
+
+        assert_eq!(
+            r,
+            TopUpReminder {
+                days_left: 76,
+                pace: Some(dec!(942)),
+                projected: Some(dec!(7536)),
+                months: vec![11, 12],
+                each: dec!(2826),
+            }
+        );
+    }
+
+    #[test]
+    fn an_unpaid_current_month_is_still_to_top_up_and_not_part_of_the_pace() {
+        // 2 Oct, 942 paid May–Sep (4710), nothing yet in October. Pace over May–Sep: 4710 / 5
+        // = 942, not 4710 / 6. The top-ups go in Oct, Nov and Dec: (11 304 - 4710) / 3 = 2198.
+        // At 942 a month: 4710 + 3 x 942 = 7536. Days left: 29 + 30 + 31 = 90.
+        let mut m = design_months();
+        m[9] = dec!(0);
+        let r = top_up_reminder(&year_with(dec!(4710)), &m, d("2026-10-02")).unwrap();
+
+        assert_eq!(r.days_left, 90);
+        assert_eq!((r.pace, r.projected), (Some(dec!(942)), Some(dec!(7536))));
+        assert_eq!((r.months, r.each), (vec![10, 11, 12], dec!(2198)));
+    }
+
+    #[test]
+    fn nothing_paid_yet_has_no_pace() {
+        // 10 Jan, nothing paid: the whole 11 304 over 12 months, 942 each. Days left: 355.
+        let r = top_up_reminder(&year_with(dec!(0)), &[dec!(0); 12], d("2026-01-10")).unwrap();
+
+        assert_eq!((r.pace, r.projected), (None, None));
+        assert_eq!(r.months, (1..=12).collect::<Vec<u32>>());
+        assert_eq!((r.each, r.days_left), (dec!(942), 355));
+    }
+
+    #[test]
+    fn december_already_paid_still_tops_up_in_december() {
+        // 20 Dec, 1000 paid in January and 1000 in December. Pace: 2000 / 12 months = 166.66…
+        // Left: 11 304 - 2000 = 9304, all in December. Days left: 11.
+        let mut m = [dec!(0); 12];
+        m[0] = dec!(1000);
+        m[11] = dec!(1000);
+        let r = top_up_reminder(&year_with(dec!(2000)), &m, d("2026-12-20")).unwrap();
+
+        assert_eq!((r.months, r.each, r.days_left), (vec![12], dec!(9304), 11));
+        assert_eq!(r.pace.unwrap().round_dp(4), dec!(166.6667));
+        // 2000 + 1 x 166.66… = 2166.66…
+        assert_eq!(r.projected.unwrap().round_dp(2), dec!(2166.67));
+    }
+
+    #[test]
+    fn the_split_is_rounded_down_to_the_grosz() {
+        // 1 Oct, 10 304 paid in January: 1000 left over Oct–Dec. 1000 / 3 = 333.333… -> 333.33
+        // (3 x 333.33 = 999.99 stays within the limit). On 31 Dec no day is left.
+        let mut m = [dec!(0); 12];
+        m[0] = dec!(10304);
+        let y = year_with(dec!(10304));
+        let r = top_up_reminder(&y, &m, d("2026-10-01")).unwrap();
+        assert_eq!((r.months, r.each), (vec![10, 11, 12], dec!(333.33)));
+        // Pace: 10 304 over Jan–Sep = 1144.88… a month; 10 304 + 3 x that = 13 738.66…, past
+        // the limit.
+        assert!(r.projected.unwrap() > y.limit);
+
+        assert_eq!(
+            top_up_reminder(&y, &m, d("2026-12-31")).unwrap().days_left,
+            0
+        );
+    }
+
+    #[test]
+    fn no_reminder_once_the_limit_is_reached() {
+        let mut m = [dec!(0); 12];
+        m[2] = dec!(11304);
+        assert_eq!(
+            top_up_reminder(&year_with(dec!(11304)), &m, d("2026-10-16")),
+            None
+        );
+        assert_eq!(
+            top_up_reminder(&year_with(dec!(12000)), &m, d("2026-10-16")),
+            None
         );
     }
 

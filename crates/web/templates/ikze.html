@@ -1,0 +1,83 @@
+{% extends "layout.html" %}
+{#- The IKZE page, markup and inline styles from design/reference/05-ikze.html. -#}
+{% block title %}IKZE · Portfel{% endblock %}
+{% block content %}
+<div style="display: flex; flex-direction: column; gap: 24px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 8px">
+<h1 style="margin: 0; font-size: 15px; font-weight: 500; color: var(--text-2)">IKZE</h1>
+<div style="font-size: 13px; color: var(--text-3)">XTB · retirement account · tax year {{ year }}</div>
+</header>
+
+{%- match body %}
+{%- when Err(error) %}
+<p role="alert" style="margin: 0; color: var(--text-2)">{{ error }}</p>
+{%- when Ok(b) %}
+
+<section aria-label="Annual limit" style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 28px; display: flex; flex-direction: column; gap: 24px; box-shadow: var(--shadow)">
+<div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="font-size: 13px; color: var(--text-3)">Contributed in {{ year }}</div>
+<div style="display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px">
+<span class="hero-num" style="font-size: 56px; line-height: 1; font-weight: 500; letter-spacing: -0.035em">{{ b.limit.contributed }}<span style="font-size: 0.45em; font-weight: 400; color: var(--text-2); letter-spacing: 0; margin-left: 8px">zł</span></span>
+<span style="font-size: 15px; color: var(--text-3)">of {{ b.limit.limit }}</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end; text-align: right">
+<div style="font-size: 13px; color: var(--text-3)">Remaining</div>
+<div style="font-size: 28px; font-weight: 500; letter-spacing: -0.02em">{{ b.limit.remaining }}</div>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<div role="progressbar" aria-label="IKZE limit used" aria-valuemin="0" aria-valuemax="{{ b.limit.max }}" aria-valuenow="{{ b.limit.now }}" aria-valuetext="{{ b.limit.value_text }}" style="position: relative; height: 14px; background: var(--surface-2); border-radius: 7px; overflow: hidden">
+<div style="position: absolute; left: 0; top: 0; bottom: 0; width: {{ b.limit.used_width }}; background: var(--accent); border-radius: 7px 0 0 7px"></div>
+<div style="position: absolute; left: {{ b.limit.used_width }}; top: 0; bottom: 0; width: {{ b.limit.rest_width }}; background: repeating-linear-gradient(135deg, transparent 0 5px, var(--line-2) 5px 6px)"></div>
+</div>
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; font-size: 12px; color: var(--text-3)"><span>{{ b.limit.caption }}</span><span>Hatched: still deductible this year</span></div>
+{%- if let Some(over) = b.limit.over %}
+<div style="font-size: 12px; color: var(--warn)">{{ over }}</div>
+{%- endif %}
+{%- if let Some(w) = b.limit.withdrawn %}
+<div style="font-size: 12px; color: var(--text-3)">{{ w }}</div>
+{%- endif %}
+</div>
+</section>
+
+{%- if let Some(r) = b.banner %}
+<section aria-label="Deadline reminder" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px 20px; padding: 18px 20px; border-radius: 14px; background: var(--accent-soft); color: var(--text)">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.7" stroke-linecap="round" aria-hidden="true" style="flex: 0 0 auto"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+<div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 14px; font-weight: 500">{{ r.title }}</div>
+<div style="font-size: 13px; color: var(--text-2); line-height: 1.45">{{ r.text }}</div>
+</div>
+{%- if let Some(href) = r.plan_href %}
+<a href="{{ href }}" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 9px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 500; border: 1px solid var(--line)">Plan a top-up</a>
+{%- endif %}
+</section>
+{%- endif %}
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch">
+{{ b.tax|safe }}
+
+<section aria-labelledby="months-h" style="flex: 999 1 520px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px; box-shadow: var(--shadow)">
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px">
+<h2 id="months-h" style="margin: 0; font-size: 15px; font-weight: 600">Contributions by month</h2>
+<div style="display: flex; gap: 16px; font-size: 12px; color: var(--text-3)"><span style="display: flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 3px; background: var(--accent)"></span>Paid in</span><span style="display: flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 3px; border: 1.5px dashed var(--accent); box-sizing: border-box"></span>Needed to max out</span></div>
+</div>
+<div style="overflow-x: auto">
+<div style="display: grid; grid-template-columns: repeat(12, minmax(28px, 1fr)); gap: 8px; align-items: end; height: 160px; min-width: 420px">
+{%- for m in b.months %}
+<div style="display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; gap: 8px; height: 100%">
+<span style="font-size: 11px; color: var(--text-3); text-align: center; white-space: nowrap">{{ m.value }}</span>
+<div style="height: {{ m.height }}; border-radius: 4px; box-sizing: border-box; {{ m.kind.style() }}"></div>
+<span style="font-size: 12px; text-align: center; {% if m.current %}color: var(--text); font-weight: 500{% else %}color: var(--text-3){% endif %}">{{ m.label }}</span>
+</div>
+{%- endfor %}
+</div>
+</div>
+</section>
+</div>
+{%- endmatch %}
+
+</div>
+{% endblock %}

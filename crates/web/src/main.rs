@@ -1,5 +1,7 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
+use axum::Extension;
 use portfolio_core::config::Config;
 use portfolio_sources::alphavantage::AlphaVantageClient;
 use portfolio_sources::kraken::KrakenClient;
@@ -38,6 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = portfolio_db::open(&db_url).await?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     println!("portfolio-web listening on http://{addr} (database {db_url})");
-    axum::serve(listener, app(AppState::new(pool, market))).await?;
+    let router = app(AppState::new(pool, market)).layer(Extension(Arc::new(config)));
+    axum::serve(listener, router).await?;
     Ok(())
 }

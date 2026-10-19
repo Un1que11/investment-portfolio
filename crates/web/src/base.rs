@@ -131,9 +131,12 @@ impl Page {
         }
     }
 
-    /// Built to the design yet. The others are shown in the nav but not linked (P21–P24).
-    fn built(self) -> bool {
-        matches!(self, Page::Overview | Page::Gold | Page::Components)
+    /// Built to the design yet. The others are shown in the nav but not linked (P22, P24).
+    pub fn built(self) -> bool {
+        matches!(
+            self,
+            Page::Overview | Page::Ikze | Page::Gold | Page::Components
+        )
     }
 
     /// The nav icon from `design/reference/01-overview.html`.
@@ -603,7 +606,7 @@ mod tests {
             .filter(|n| n.built)
             .map(|n| n.href)
             .collect();
-        assert_eq!(built, ["/", "/gold"]);
+        assert_eq!(built, ["/", "/ikze", "/gold"]);
 
         let dark = Shell::new(
             Page::Gold,

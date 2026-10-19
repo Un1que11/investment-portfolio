@@ -1,0 +1,23 @@
+{#- The IKZE deduction card (design/reference/05-ikze.html). The 12% / 32% switch swaps the card
+    through htmx; without it the links load the page. -#}
+<section id="tax" aria-labelledby="tax-h" style="flex: 1 1 340px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px; box-shadow: var(--shadow)">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<h2 id="tax-h" style="margin: 0; font-size: 15px; font-weight: 600">Estimated tax deduction</h2>
+<nav aria-label="Tax bracket" class="seg" style="align-self: auto">
+{%- for b in brackets %}
+<a href="{{ b.href }}" hx-get="{{ b.href }}" hx-target="#tax" hx-swap="outerHTML" hx-push-url="true"{% if b.current %} aria-current="true"{% endif %} style="min-width: 52px">{{ b.label }}</a>
+{%- endfor %}
+</nav>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<div style="font-size: 12px; color: var(--text-3)">On contributions so far</div>
+<div style="font-size: 28px; font-weight: 500; letter-spacing: -0.02em; color: var(--gain)">{{ so_far }}</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<div style="font-size: 12px; color: var(--text-3)">If you max out</div>
+<div style="font-size: 28px; font-weight: 500; letter-spacing: -0.02em">{{ at_max }}</div>
+</div>
+</div>
+<p style="margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-3)">{{ note }}</p>
+</section>

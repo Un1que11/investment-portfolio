@@ -206,8 +206,9 @@ PORTFOLIO_ADDR=127.0.0.1:8080 cargo run -p portfolio-web
 Health check: `curl http://127.0.0.1:3000/health` returns `ok`.
 
 The database defaults to `portfolio.db` in the working directory; set `PORTFOLIO_DB_URL`
-(e.g. `sqlite:///Users/me/portfolio/portfolio.db`) to keep it elsewhere. The gold buyback factor
-comes from `config.toml` (or the file named by `PORTFOLIO_CONFIG`), and `ALPHAVANTAGE_API_KEY`
+(e.g. `sqlite:///Users/me/portfolio/portfolio.db`) to keep it elsewhere. The gold buyback factor,
+the IKZE limits and the tax rate come from `config.toml` (or the file named by
+`PORTFOLIO_CONFIG`), and `ALPHAVANTAGE_API_KEY`
 (environment or `.env`) prices VWCE; without it VWCE shows as unpriced.
 
 Pages:
@@ -217,6 +218,14 @@ Pages:
   `bench=off` hides the benchmark; the switch and the checkbox swap the panel through htmx and
   push the URL. Chart days are the period's start (the first contribution for All), each month
   end and today, priced through the same caches as the report. Problems with prices go to stderr.
+- `/ikze`: the IKZE year (`design/screens/05`): paid in against the year's limit with the rest
+  hatched, a reminder to top up before 31 December (days left; the average paid in a month so
+  far and where it ends the year; the rest of the limit split evenly over the months left, the
+  current one included until something is paid in it, rounded down to the grosz), the estimated
+  deduction on what was paid in and on the whole limit, and the deposits by month with the
+  months still to top up dashed. `?rate=12|32` picks the bracket (default `[tax] rate_percent`);
+  the switch swaps the card through htmx. It needs no price, only the NBP rate of a deposit in
+  another currency; a missing rate or a year without a limit is said instead of a total.
 - `/gold`: add, list and delete physical gold coins (purchase date, price in PLN, fine gold
   weight, optional manual quote and label). Amounts may be typed with a decimal comma.
 - `/components`: the shared components (number tile, delta badge, progress and allocation
