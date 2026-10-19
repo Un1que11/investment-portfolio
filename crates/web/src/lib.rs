@@ -20,6 +20,7 @@ pub mod base;
 pub mod chart;
 pub mod format;
 pub mod gold;
+pub mod ikze;
 pub mod overview;
 
 /// Price sources (read-only) and the settings the valuation needs.
@@ -74,10 +75,14 @@ impl AppState {
 }
 
 /// Builds the application router. Kept separate from `main` so tests can drive it in-process.
+///
+/// The IKZE page also needs the config: add it as a layer,
+/// `app(state).layer(Extension(Arc::new(config)))`; without it `/ikze` answers 500.
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/", get(overview::show))
         .route("/health", get(health))
+        .route("/ikze", get(ikze::show))
         .route("/gold", get(gold::show))
         .route("/gold/coins", post(gold::add))
         .route("/gold/coins/{id}/delete", post(gold::delete))
