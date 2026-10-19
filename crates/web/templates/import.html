@@ -1,0 +1,121 @@
+{% extends "layout.html" %}
+{#- The Import page, markup and inline styles from design/reference/07-import.html; the empty
+    drop zone from 08-states.html. -#}
+{% block title %}Import · Portfel{% endblock %}
+{% block content %}
+<div style="display: flex; flex-direction: column; gap: 24px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; margin-bottom: 8px">
+<h1 style="margin: 0; font-size: 15px; font-weight: 500; color: var(--text-2)">Import</h1>
+<ol aria-label="Progress" style="list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 10px; font-size: 13px">
+{%- for s in steps %}
+{%- if !loop.first %}
+<li aria-hidden="true" style="width: 20px; height: 1px; background: var(--line-2)"></li>
+{%- endif %}
+{%- if s.ticked %}
+<li style="display: flex; align-items: center; gap: 8px; color: var(--text-3)"><span style="width: 20px; height: 20px; border-radius: 50%; background: var(--surface-2); display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>{{ s.label }}</li>
+{%- else if s.current %}
+<li aria-current="step" style="display: flex; align-items: center; gap: 8px; color: var(--text); font-weight: 500"><span style="width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; background: var(--text); color: var(--bg)">{{ s.number }}</span>{{ s.label }}</li>
+{%- else %}
+<li style="display: flex; align-items: center; gap: 8px; color: var(--text-3)"><span style="width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; background: var(--surface-2); color: var(--text-3)">{{ s.number }}</span>{{ s.label }}</li>
+{%- endif %}
+{%- endfor %}
+</ol>
+</header>
+
+{%- if let Some(r) = review %}
+<section aria-label="Uploaded file" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface)">
+<span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 10px; background: var(--surface-2); display: flex; align-items: center; justify-content: center; color: var(--text-2); flex: 0 0 auto"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6.5v18h11V6.5z"/><path d="M14 3v3.5h3.5M9 12h6M9 15.5h6"/></svg></span>
+<div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+<div style="font-size: 14px; font-weight: 500; overflow-wrap: anywhere">{{ r.file.name }}</div>
+<div style="font-size: 12px; color: var(--text-3)">{{ r.file.meta }}</div>
+</div>
+<form method="post" action="/import" enctype="multipart/form-data" style="margin: 0">
+<label class="ghost" style="position: relative; display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border: 1px solid var(--line); border-radius: 9px; font-size: 13px; color: var(--text-2); cursor: pointer">Replace file<input type="file" name="file" accept=".xlsx" onchange="this.form.submit()" style="position: absolute; width: 1px; height: 1px; opacity: 0"></label>
+</form>
+</section>
+
+{%- if let Some(d) = r.done %}
+<section aria-live="polite" style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 20px 24px; border-radius: 14px; background: var(--gain-soft); color: var(--gain)">
+<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 3 3 5-6"/></svg>
+<div style="flex: 1 1 240px; display: flex; flex-direction: column; gap: 2px"><div style="font-size: 14px; font-weight: 500">{{ d.title }}</div>
+{%- if let Some(line) = d.ikze %}<div style="font-size: 13px; color: var(--text-2)">{{ line }}</div>{% endif %}</div>
+<a href="/" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 9px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 500; border: 1px solid var(--line)">Back to overview</a>
+</section>
+{%- endif %}
+
+<section class="import-review" aria-labelledby="prev-h" style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden">
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 24px 12px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="prev-h" style="margin: 0; font-size: 15px; font-weight: 600">{% if r.done.is_some() %}Operations{% else %}Operations to add{% endif %}</h2>
+<div style="font-size: 13px; color: var(--text-3)"><span style="color: var(--text); font-weight: 500">{{ r.new }} {% if r.done.is_some() %}added{% else %}new{% endif %}</span> · {{ r.already }} already imported</div>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); cursor: pointer"><input id="show-dup" type="checkbox" checked style="width: 16px; height: 16px; margin: 0; accent-color: var(--accent)">Show already imported</label>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 760px; border-collapse: collapse; font-size: 14px">
+<thead>
+<tr style="color: var(--text-3); font-size: 12px; text-align: left">
+<th scope="col" style="font-weight: 400; padding: 10px 12px 10px 24px">Date</th>
+<th scope="col" style="font-weight: 400; padding: 10px 12px">Type</th>
+<th scope="col" style="font-weight: 400; padding: 10px 12px">Instrument</th>
+<th scope="col" style="font-weight: 400; padding: 10px 12px; text-align: right">Quantity</th>
+<th scope="col" style="font-weight: 400; padding: 10px 12px; text-align: right">Amount</th>
+<th scope="col" style="font-weight: 400; padding: 10px 24px 10px 12px">Status</th>
+</tr>
+</thead>
+<tbody>
+{%- for row in r.rows %}
+{%- if row.status.chip().is_some() %}
+<tr style="border-top: 1px solid var(--line); color: var(--text)">
+{%- else %}
+<tr class="dup" style="border-top: 1px solid var(--line); color: var(--text-3)">
+{%- endif %}
+<td style="padding: 13px 12px 13px 24px; white-space: nowrap">{{ row.date }}</td>
+<td style="padding: 13px 12px">{{ row.kind }}</td>
+<td style="padding: 13px 12px">{{ row.instrument }}</td>
+<td style="padding: 13px 12px; text-align: right">{{ row.quantity }}</td>
+<td style="padding: 13px 12px; text-align: right; white-space: nowrap">{{ row.amount }}</td>
+<td style="padding: 13px 24px 13px 12px">{% if let Some(kind) = row.status.chip() %}<span class="chip chip-{{ kind }}">{{ row.status.text() }}</span>{% else %}<span style="font-size: 12px; color: var(--text-3)">{{ row.status.text() }}</span>{% endif %}</td>
+</tr>
+{%- endfor %}
+</tbody>
+</table>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--line); background: var(--bg)">
+<div style="font-size: 12px; color: var(--text-3)">Duplicates are matched on each operation's date, type, amount and comment, so re-uploading the same file is safe.</div>
+<form method="post" action="/import/confirm" style="display: flex; gap: 8px; margin: 0">
+<a class="ghost" href="/import" style="display: inline-flex; align-items: center; height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--text-2); font-size: 14px">Cancel</a>
+{%- if r.done.is_some() %}
+<button class="primary" type="button" disabled style="height: 44px; padding: 0 18px; border: 0; border-radius: 9px; font-size: 14px; font-weight: 500; background: var(--surface-2); color: var(--text-3); cursor: default">Added</button>
+{%- else %}
+<input type="hidden" name="name" value="{{ r.file.name }}">
+<input type="hidden" name="data" value="{{ r.file.data }}">
+{%- if r.new == 0 %}
+<button class="primary" type="submit" disabled style="height: 44px; padding: 0 18px; border: 0; border-radius: 9px; font-size: 14px; font-weight: 500; background: var(--surface-2); color: var(--text-3); cursor: default">{{ r.confirm_label() }}</button>
+{%- else %}
+<button class="primary" type="submit" style="height: 44px; padding: 0 18px; border: 0; border-radius: 9px; font-size: 14px; font-weight: 500; background: var(--text); color: var(--bg)">{{ r.confirm_label() }}</button>
+{%- endif %}
+{%- endif %}
+</form>
+</div>
+</section>
+
+{%- else %}
+<form method="post" action="/import" enctype="multipart/form-data" style="display: flex; flex-direction: column; gap: 12px; margin: 0">
+<label style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 220px; padding: 24px; border: 1.5px dashed {% if error.is_some() %}var(--loss){% else %}var(--line-2){% endif %}; border-radius: 16px; background: var(--surface); text-align: center; cursor: pointer">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4.5 19.5h15"/></svg>
+<span style="font-size: 15px; font-weight: 500">Drop your xStation account history</span>
+<span style="font-size: 13px; color: var(--text-3)">.xlsx from xStation → Account history → Export, up to {{ max_size }}. Nothing is uploaded anywhere but this Mac.</span>
+<span style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; margin-top: 6px; border-radius: 9px; border: 1px solid var(--line); font-size: 13px; color: var(--text)">Choose file</span>
+{#- The input covers the zone, so a file dropped on it lands in the input. -#}
+<input type="file" name="file" accept=".xlsx" required onchange="this.form.submit()"{% if error.is_some() %} aria-invalid="true" aria-describedby="import-msg"{% endif %} aria-label="xStation account history (.xlsx)" style="position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer">
+</label>
+{%- if let Some(e) = error %}
+<span id="import-msg" class="field-error" role="alert">{{ e }}</span>
+{%- endif %}
+<noscript><button class="btn btn-secondary" type="submit">Upload</button></noscript>
+</form>
+{%- endif %}
+</div>
+{% endblock %}

@@ -86,13 +86,12 @@ async fn pages_use_the_shell_and_follow_the_system_theme_without_a_cookie() {
         "{body}"
     );
     assert!(body.contains("prefers-color-scheme: dark"), "{body}");
-    // The current page is marked; pages not built yet are not links.
+    // The current page is marked; the others are links.
     assert!(
         body.contains(r#"<a href="/gold" aria-current="page""#),
         "{body}"
     );
-    assert!(!body.contains(r#"href="/import""#), "{body}");
-    assert!(body.contains("Import</span>"), "{body}");
+    assert!(body.contains(r#"href="/import""#), "{body}");
     assert!(body.contains(r#"href="/allocation""#), "{body}");
     // No price has been fetched into the empty database.
     assert!(body.contains("No prices yet"), "{body}");

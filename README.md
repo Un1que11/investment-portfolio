@@ -60,7 +60,7 @@ that has already been applied to a real database.
 ## XTB import
 
 XTB has no API since 14.03.2025; the account history export from xStation (History → export
-to Excel) is the source. Import it into the local database:
+to Excel) is the source. Upload it on `/import` (see below), or import it from the command line:
 
 ```bash
 cargo run -p portfolio-xtb --example import -- ~/Downloads/IKZE_....xlsx
@@ -241,6 +241,13 @@ Pages:
   their dealer quote; without an NBP price the others show "—". The header says how coins are
   valued and shows "Purchases paused" when `[paused] gold` is set. Adding and removing swap the
   tiles, table and form through htmx. Amounts may be typed with a decimal comma.
+- `/import`: the XTB import (`design/screens/07`), Upload → Review → Done. Drop or choose the
+  xStation export (at most 2 MB); the review lists its operations newest first, each "New" or
+  "Already imported" (a checkbox hides the latter), and changes nothing. "Add N operations"
+  imports the new ones and shows how much was paid into IKZE this year. The file is never written
+  to disk: the review sends it back in a hidden field and it is parsed again on confirm, which
+  makes a repeated confirm harmless. The file name is shown with the export's account number
+  (and any run of six or more digits) masked.
 - `/components`: the shared components (number tile, delta badge, progress and allocation
   bars, asset card, table rows, buttons, inputs, status chips) with the design's sample figures,
   to compare with `design/screens/09-components.png`.

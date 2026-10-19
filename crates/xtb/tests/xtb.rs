@@ -3,7 +3,9 @@ use std::str::FromStr;
 
 use chrono::NaiveDateTime;
 use portfolio_db::open_in_memory;
-use portfolio_xtb::import::{ImportError, ImportSummary, deposits_total, external_id, import};
+use portfolio_xtb::import::{
+    ImportError, ImportSummary, already_imported, deposits_total, external_id, import, validate,
+};
 use portfolio_xtb::{OperationKind, XtbError, parse, parse_file};
 use rust_decimal::Decimal;
 use rust_xlsxwriter::{ExcelDateTime, Format, Workbook};
@@ -422,6 +424,11 @@ async fn overlapping_export_only_adds_new_operations() {
     .unwrap();
 
     import(&pool, &older).await.unwrap();
+    // Oldest first: the earlier deposit and buy are stored, the later deposit is not.
+    assert_eq!(
+        already_imported(&pool, &newer).await.unwrap(),
+        [true, true, false]
+    );
     let summary = import(&pool, &newer).await.unwrap();
 
     assert_eq!(
@@ -453,10 +460,14 @@ async fn unknown_instrument_or_product_writes_nothing() {
         Some(990.0),
     )))
     .unwrap();
+    let err = validate(&instrument).unwrap_err();
+    assert!(matches!(err, ImportError::UnknownInstrument(t) if t == "SXR8.DE"));
     let err = import(&pool, &instrument).await.unwrap_err();
     assert!(matches!(err, ImportError::UnknownInstrument(t) if t == "SXR8.DE"));
 
     let product = parse(Cursor::new(workbook(&HEADER, &[ike_unknown], Some(5.0)))).unwrap();
+    let err = validate(&product).unwrap_err();
+    assert!(matches!(err, ImportError::UnknownProduct(p) if p == "OKE"));
     let err = import(&pool, &product).await.unwrap_err();
     assert!(matches!(err, ImportError::UnknownProduct(p) if p == "OKE"));
 

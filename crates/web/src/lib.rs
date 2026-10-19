@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -22,6 +23,7 @@ pub mod chart;
 pub mod format;
 pub mod gold;
 pub mod ikze;
+pub mod import;
 pub mod overview;
 
 /// Price sources (read-only) and the settings the valuation needs.
@@ -88,6 +90,16 @@ pub fn app(state: AppState) -> Router {
         .route("/gold", get(gold::show))
         .route("/gold/coins", post(gold::add))
         .route("/gold/coins/{id}/delete", post(gold::delete))
+        .route(
+            "/import",
+            get(import::show)
+                .post(import::upload)
+                .layer(DefaultBodyLimit::max(import::UPLOAD_BODY_LIMIT)),
+        )
+        .route(
+            "/import/confirm",
+            post(import::confirm).layer(DefaultBodyLimit::max(import::CONFIRM_BODY_LIMIT)),
+        )
         .merge(base::routes())
         .with_state(state)
 }

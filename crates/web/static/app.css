@@ -81,3 +81,6 @@
 .as-phone{display:flex}
 .as-section{gap:12px!important}
 }
+
+/* Import review: "Show already imported" unticked hides those rows, with no round trip. */
+.import-review:has(#show-dup:not(:checked)) tr.dup{display:none}

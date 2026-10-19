@@ -30,10 +30,8 @@
   {%- for item in shell.nav %}
   {%- if item.current %}
   <a href="{{ item.href }}" aria-current="page" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 500">{{ item.label }}</a>
-  {%- else if item.built %}
-  <a href="{{ item.href }}" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; color: var(--text-2); font-size: 14px">{{ item.label }}</a>
   {%- else %}
-  <span aria-disabled="true" title="Not built yet" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; color: var(--text-3); font-size: 14px">{{ item.label }}</span>
+  <a href="{{ item.href }}" style="flex: 0 0 auto; display: flex; align-items: center; height: 36px; padding: 0 14px; border-radius: 18px; color: var(--text-2); font-size: 14px">{{ item.label }}</a>
   {%- endif %}
   {%- endfor %}
 </nav>
@@ -46,10 +44,8 @@
       {%- for item in shell.nav %}
       {%- if item.current %}
       <a href="{{ item.href }}" aria-current="page" style="display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 8px; font-size: 14px; background: var(--surface-2); color: var(--text); font-weight: 500; white-space: nowrap">{{ item.icon|safe }}{{ item.label }}</a>
-      {%- else if item.built %}
-      <a href="{{ item.href }}" style="display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 8px; font-size: 14px; white-space: nowrap">{{ item.icon|safe }}{{ item.label }}</a>
       {%- else %}
-      <span aria-disabled="true" title="Not built yet" style="display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 8px; font-size: 14px; white-space: nowrap; color: var(--text-3)">{{ item.icon|safe }}{{ item.label }}</span>
+      <a href="{{ item.href }}" style="display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 8px; font-size: 14px; white-space: nowrap">{{ item.icon|safe }}{{ item.label }}</a>
       {%- endif %}
       {%- endfor %}
     </div>
