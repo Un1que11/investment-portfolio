@@ -364,8 +364,6 @@ pub(crate) async fn vwce_prices(
     (prices, problem)
 }
 
-/// The coins held on `date`, each valued at the NBP price per gram (or its own quote). While
-/// NBP is down, today's value uses the last stored gold price ([`close_or_last_known`]).
 /// VWCE in PLN on `day`. Today falls back to the last stored close while Alpha Vantage is
 /// down, as the positions do.
 async fn vwce_in_pln(
@@ -378,6 +376,8 @@ async fn vwce_in_pln(
         .map(|(v, _)| v.close_pln)
 }
 
+/// The coins held on `date`, each valued at the NBP price per gram (or its own quote). While
+/// NBP is down, today's value uses the last stored gold price ([`close_or_last_known`]).
 async fn gold_value(
     date: NaiveDate,
     s: &Sources<'_>,
