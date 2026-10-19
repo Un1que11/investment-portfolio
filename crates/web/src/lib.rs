@@ -15,6 +15,7 @@ use portfolio_sources::valuation::Sources;
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 
+pub mod allocation;
 pub mod assets;
 pub mod base;
 pub mod chart;
@@ -76,12 +77,13 @@ impl AppState {
 
 /// Builds the application router. Kept separate from `main` so tests can drive it in-process.
 ///
-/// The IKZE page also needs the config: add it as a layer,
-/// `app(state).layer(Extension(Arc::new(config)))`; without it `/ikze` answers 500.
+/// The Allocation and IKZE pages also need the config: add it as a layer,
+/// `app(state).layer(Extension(Arc::new(config)))`; without it they answer 500.
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route("/", get(overview::show))
         .route("/health", get(health))
+        .route("/allocation", get(allocation::show))
         .route("/ikze", get(ikze::show))
         .route("/gold", get(gold::show))
         .route("/gold/coins", post(gold::add))

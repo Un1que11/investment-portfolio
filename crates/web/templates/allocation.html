@@ -1,0 +1,101 @@
+{% extends "layout.html" %}
+{#- The Allocation page, markup and inline styles from design/reference/04-allocation.html. -#}
+{% block title %}Allocation · Portfel{% endblock %}
+{% block content %}
+<div style="display: flex; flex-direction: column; gap: 32px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px">
+<h1 style="margin: 0; font-size: 15px; font-weight: 500; color: var(--text-2)">Allocation</h1>
+<div style="font-size: 13px; color: var(--text-3)">{{ caption }}</div>
+</header>
+
+{%- match body %}
+{%- when Err(error) %}
+<p role="alert" style="margin: 0; color: var(--text-2)">{{ error }}</p>
+{%- when Ok(b) %}
+
+<div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+
+<div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+{%- match b.drift %}
+{%- when Err(error) %}
+<p role="status" style="margin: 0; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; color: var(--text-2)">{{ error }}</p>
+{%- when Ok(v) %}
+
+<section aria-label="Actual versus target" style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px; box-shadow: var(--shadow)">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-3)"><span>Actual</span></div>
+<div role="img" aria-label="{{ v.actual_label }}" style="display: flex; gap: 3px; height: 12px">
+{%- for s in v.bar %}
+<div style="width: {{ s.width }}; background: {{ s.color }}; border-radius: {{ s.radius }}"></div>
+{%- endfor %}
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; color: var(--text-3)">Target</div>
+<div role="img" aria-label="{{ v.target_label }}" style="display: flex; gap: 3px; height: 12px">
+{%- for s in v.bar %}
+<div style="width: {{ s.target_width }}; border: 1.5px dashed {{ s.color }}; border-radius: {{ s.radius }}; box-sizing: border-box"></div>
+{%- endfor %}
+</div>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 13px; color: var(--text-2)">
+{%- for (name, color) in v.legend %}
+<span style="display: flex; align-items: center; gap: 8px"><span style="width: 10px; height: 10px; border-radius: 3px; background: {{ color }}"></span>{{ name }}</span>
+{%- endfor %}
+</div>
+</section>
+
+<section aria-labelledby="drift-h" style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden">
+<h2 id="drift-h" style="margin: 0; padding: 20px 24px 4px; font-size: 15px; font-weight: 600">Drift from target</h2>
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 640px; border-collapse: collapse; font-size: 14px">
+<thead>
+<tr style="color: var(--text-3); font-size: 12px; text-align: right">
+<th scope="col" style="text-align: left; font-weight: 400; padding: 14px 24px 10px">Asset</th>
+<th scope="col" style="font-weight: 400; padding: 14px 12px 10px">Target</th>
+<th scope="col" style="font-weight: 400; padding: 14px 12px 10px">Actual</th>
+<th scope="col" style="font-weight: 400; padding: 14px 12px 10px; text-align: center">Drift</th>
+<th scope="col" style="font-weight: 400; padding: 14px 24px 10px 12px">In zł</th>
+</tr>
+</thead>
+<tbody>
+{%- for r in v.rows %}
+<tr style="border-top: 1px solid var(--line); text-align: right">
+<th scope="row" style="text-align: left; font-weight: 500; padding: {% if r.coins.is_empty() %}16px 24px{% else %}16px 24px 10px{% endif %}"><div style="display: flex; align-items: center; gap: 10px"><span style="width: 10px; height: 10px; border-radius: 3px; background: {{ r.color }}; flex: 0 0 auto"></span><span style="display: flex; flex-direction: column; gap: 2px">{{ r.name }}
+{%- if r.paused -%}
+<span style="display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 400; color: var(--text-3)"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>{{ r.sub }}</span>
+{%- else -%}
+<span style="font-size: 12px; font-weight: 400; color: var(--text-3)">{{ r.sub }}</span>
+{%- endif -%}
+</span></div></th>
+<td style="padding: {{ r.pad() }}; color: var(--text-2)">{{ r.cells.target }}</td>
+<td style="padding: {{ r.pad() }}">{{ r.cells.actual }}</td>
+<td style="padding: {{ r.pad() }}"><div style="display: flex; align-items: center; justify-content: center; gap: 10px"><div aria-hidden="true" style="position: relative; width: 96px; height: 6px; background: var(--surface-2); border-radius: 3px"><div style="position: absolute; {{ r.cells.bar.anchor }}: 50%; top: 0; bottom: 0; width: {{ r.cells.bar.width }}; background: var(--text-2); border-radius: {% if r.cells.bar.anchor == "right" %}3px 0 0 3px{% else %}0 3px 3px 0{% endif %}"></div><div style="position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--line-2)"></div></div><span style="width: 72px; text-align: right">{{ r.cells.drift }}</span></div></td>
+<td style="padding: {% if r.coins.is_empty() %}16px 24px 16px 12px{% else %}16px 24px 10px 12px{% endif %}">{{ r.cells.pln }}</td>
+</tr>
+{%- for c in r.coins %}
+{%- let last = loop.last %}
+<tr style="text-align: right; color: var(--text-2); font-size: 13px">
+<th scope="row" style="text-align: left; font-weight: 400; padding: {% if last %}6px 24px 16px 44px{% else %}6px 24px 6px 44px{% endif %}">{{ c.symbol }} <span style="color: var(--text-3)">· of crypto</span></th>
+<td style="padding: {% if last %}6px 12px 16px{% else %}6px 12px{% endif %}">{{ c.cells.target }}</td>
+<td style="padding: {% if last %}6px 12px 16px{% else %}6px 12px{% endif %}">{{ c.cells.actual }}</td>
+<td style="padding: {% if last %}6px 12px 16px{% else %}6px 12px{% endif %}"><div style="display: flex; align-items: center; justify-content: center; gap: 10px"><div aria-hidden="true" style="position: relative; width: 96px; height: 4px; background: var(--surface-2); border-radius: 2px"><div style="position: absolute; {{ c.cells.bar.anchor }}: 50%; top: 0; bottom: 0; width: {{ c.cells.bar.width }}; background: var(--text-3); border-radius: {% if c.cells.bar.anchor == "right" %}2px 0 0 2px{% else %}0 2px 2px 0{% endif %}"></div></div><span style="width: 72px; text-align: right">{{ c.cells.drift }}</span></div></td>
+<td style="padding: {% if last %}6px 24px 16px 12px{% else %}6px 24px 6px 12px{% endif %}">{{ c.cells.pln }}</td>
+</tr>
+{%- endfor %}
+{%- endfor %}
+</tbody>
+</table>
+</div>
+</section>
+{%- endmatch %}
+</div>
+
+{{ b.panel|safe }}
+
+</div>
+{%- endmatch %}
+
+</div>
+{% endblock %}

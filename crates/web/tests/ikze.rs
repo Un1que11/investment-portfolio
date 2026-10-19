@@ -138,8 +138,12 @@ async fn the_page_of_the_design() {
         ),
         "{page}"
     );
-    // Allocation is not built yet: no button to it.
-    assert!(!page.contains("Plan a top-up"), "{page}");
+    // The button opens the Allocation plan for one of the two top-ups.
+    assert!(
+        page.contains(r#"<a href="/allocation?amount=2826" "#),
+        "{page}"
+    );
+    assert!(page.contains("Plan a top-up</a>"), "{page}");
     // At the config's 12%: 5652 x 0.12 = 678,24 and 11 304 x 0.12 = 1356,48.
     assert!(page.contains("+678,24 zł"), "{page}");
     assert!(page.contains("+1 356,48 zł"), "{page}");

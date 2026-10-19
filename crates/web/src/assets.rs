@@ -50,7 +50,7 @@ fn weight_label(coins: &[Coin]) -> String {
 }
 
 /// The wrappers VWCE was bought in, IKZE before IKE: "IKZE", "IKZE, IKE"; empty when none.
-fn vwce_wrappers(ledger: &[LedgerTx]) -> String {
+pub fn vwce_wrappers(ledger: &[LedgerTx]) -> String {
     let held_in = |w: Wrapper| {
         ledger
             .iter()

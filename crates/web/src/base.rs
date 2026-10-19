@@ -131,12 +131,9 @@ impl Page {
         }
     }
 
-    /// Built to the design yet. The others are shown in the nav but not linked (P22, P24).
+    /// Built to the design yet. The others are shown in the nav but not linked (P24).
     pub fn built(self) -> bool {
-        matches!(
-            self,
-            Page::Overview | Page::Ikze | Page::Gold | Page::Components
-        )
+        !matches!(self, Page::Import)
     }
 
     /// The nav icon from `design/reference/01-overview.html`.
@@ -634,7 +631,7 @@ mod tests {
             .filter(|n| n.built)
             .map(|n| n.href)
             .collect();
-        assert_eq!(built, ["/", "/ikze", "/gold"]);
+        assert_eq!(built, ["/", "/allocation", "/ikze", "/gold"]);
 
         let dark = Shell::new(
             Page::Gold,

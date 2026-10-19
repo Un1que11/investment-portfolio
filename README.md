@@ -218,13 +218,21 @@ Pages:
   `bench=off` hides the benchmark; the switch and the checkbox swap the panel through htmx and
   push the URL. Chart days are the period's start (the first contribution for All), each month
   end and today, priced through the same caches as the report. Problems with prices go to stderr.
+- `/allocation`: the allocation (`design/screens/04`): the actual class shares over the dashed
+  targets, the drift table (target, actual, drift in pp with a neutral bar, and in PLN; BTC and
+  ETH as shares of crypto) and the top-up plan for an amount (`?amount=2000`, the default;
+  `paused=on` includes the classes paused in `[paused]`): what each class gets (crypto split into
+  BTC and ETH), what a skipped paused class would need, the shares after the top-up and whether
+  the VWCE part fits what is left of the year's IKZE limit. The amount takes a decimal comma and
+  spaces; the input, the chips and the checkbox swap the plan through htmx. Cash is not part of
+  the base, and a held asset without a price is said instead of the shares.
 - `/ikze`: the IKZE year (`design/screens/05`): paid in against the year's limit with the rest
   hatched, a reminder to top up before 31 December (days left; the average paid in a month so
   far and where it ends the year; the rest of the limit split evenly over the months left, the
   current one included until something is paid in it, rounded down to the grosz), the estimated
   deduction on what was paid in and on the whole limit, and the deposits by month with the
   months still to top up dashed. `?rate=12|32` picks the bracket (default `[tax] rate_percent`);
-  the switch swaps the card through htmx. It needs no price, only the NBP rate of a deposit in
+  the switch swaps the card through htmx. "Plan a top-up" opens `/allocation` with one suggested top-up. It needs no price, only the NBP rate of a deposit in
   another currency; a missing rate or a year without a limit is said instead of a total.
 - `/gold`: add, list and delete physical gold coins (purchase date, price in PLN, fine gold
   weight, optional manual quote and label). Amounts may be typed with a decimal comma.
