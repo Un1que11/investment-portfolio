@@ -305,3 +305,53 @@ async fn a_huge_amount_or_weight_is_turned_down_instead_of_breaking_the_page() {
     .await;
     assert!(panel.contains(">38 000 000,00 zł<"), "{panel}");
 }
+
+#[tokio::test]
+async fn a_huge_coin_stored_before_the_caps_still_renders_and_can_be_removed() {
+    // Rows written before the form had caps: 10^27 g x 400 zł/g overflows Decimal, and two
+    // coins paid 5 x 10^28 zł each overflow the "Paid" sum. The page shows "—" where a number
+    // cannot be had and keeps the remove buttons.
+    let pool = open_in_memory().await.unwrap();
+    gold_price(&pool).await;
+    let mut added = Vec::new();
+    for (paid, grams) in [
+        ("1000", "1000000000000000000000000000"),
+        ("50000000000000000000000000000", "3.11"),
+        ("50000000000000000000000000000", "3.11"),
+    ] {
+        let coin = NewCoin {
+            label: None,
+            purchased_on: d("2025-06-12"),
+            purchase_price_pln: dec(paid),
+            fine_weight_g: dec(grams),
+            manual_quote_pln: None,
+        };
+        added.push(add_coin(&pool, &coin).await.unwrap());
+    }
+    let router = router(pool, config(""));
+    let page = send(&router, get("/gold")).await;
+    let tile = |label: &str| {
+        format!(
+            r#"{label}</div><div style="font-size: 26px; font-weight: 500; letter-spacing: -0.02em">—</div>"#
+        )
+    };
+    assert!(page.contains(&tile("Valuation")), "{page}");
+    assert!(page.contains(&tile("Paid")), "{page}");
+    assert!(page.contains("3 coins"), "{page}");
+    for coin in &added {
+        let action = format!("/gold/coins/{}/delete", coin.id);
+        assert!(page.contains(&action), "{action}\n{page}");
+    }
+
+    // Removing the heavy coin leaves the two that overflow only when added up.
+    let uri = format!("/gold/coins/{}/delete", added[0].id);
+    let panel = send(&router, htmx_post(&uri, "")).await;
+    assert!(panel.contains("2 coins · 0,2 oz"), "{panel}");
+    assert!(panel.contains(&tile("Paid")), "{panel}");
+    for coin in &added[1..] {
+        let uri = format!("/gold/coins/{}/delete", coin.id);
+        send(&router, htmx_post(&uri, "")).await;
+    }
+    let page = send(&router, get("/gold")).await;
+    assert!(page.contains("No coins yet"), "{page}");
+}
