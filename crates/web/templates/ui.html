@@ -59,41 +59,77 @@
 </div>
 {% endmacro %}
 
-{#- An asset card (base::AssetCard). -#}
+{#- An asset card (base::AssetCard), as in design/reference/01-overview.html. -#}
 {% macro asset_card(c) %}
-<article style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 18px">
-  <div style="display: flex; justify-content: space-between; align-items: flex-start">
+<article style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 18px; box-shadow: var(--shadow)">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px">
     <div style="display: flex; flex-direction: column; gap: 3px">
       <h3 style="margin: 0; font-size: 15px; font-weight: 600">{{ c.name }}</h3>
       <div style="font-size: 12px; color: var(--text-3)">{{ c.sub }}</div>
     </div>
-    <span style="font-size: 12px; color: var(--text-3); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px">#{{ c.rank }}</span>
+    {%- if let Some(rank) = c.rank %}
+    <span style="font-size: 12px; color: var(--text-3); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px">#{{ rank }}</span>
+    {%- else %}
+    <span style="font-size: 12px; color: var(--text-3); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px">No price</span>
+    {%- endif %}
   </div>
   <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px">
-    <div style="font-size: 24px; font-weight: 500; letter-spacing: -0.02em">{{ c.value }}</div>
+    <div style="font-size: 24px; font-weight: 500; letter-spacing: -0.02em; white-space: nowrap">{{ c.value }}</div>
     {%- if let Some(path) = c.spark %}
-    <svg width="96" height="32" viewBox="0 0 96 32" aria-hidden="true"><path d="{{ path }}" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linejoin="round"/></svg>
+    <svg width="96" height="32" viewBox="0 0 96 32" aria-hidden="true" style="flex: 0 0 auto; overflow: visible"><path d="{{ path }}" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/></svg>
     {%- endif %}
   </div>
   <dl style="margin: 0; display: flex; flex-direction: column; gap: 9px; font-size: 13px">
-    <div style="display: flex; justify-content: space-between">
+    <div style="display: flex; justify-content: space-between; gap: 8px">
       <dt style="color: var(--text-3)">Invested</dt>
       <dd style="margin: 0">{{ c.invested }}</dd>
     </div>
-    <div style="display: flex; justify-content: space-between">
+    <div style="display: flex; justify-content: space-between; gap: 8px">
       <dt style="color: var(--text-3)">P&amp;L</dt>
-      <dd style="margin: 0; color: {{ c.pnl.tone.color() }}">{% if !c.pnl.arrow().is_empty() %}{{ c.pnl.arrow() }} {% endif %}{{ c.pnl.text }} · {{ c.pnl_percent }}</dd>
+      {%- if let Some(d) = c.pnl %}
+      <dd style="margin: 0; color: {{ d.tone.color() }}">{% if !d.arrow().is_empty() %}{{ d.arrow() }} {% endif %}{{ d.text }} · {{ c.pnl_percent }}</dd>
+      {%- else %}
+      <dd style="margin: 0; color: var(--text-3)">—</dd>
+      {%- endif %}
     </div>
     <div style="display: flex; flex-direction: column; gap: 7px">
-      <div style="display: flex; justify-content: space-between">
+      <div style="display: flex; justify-content: space-between; gap: 8px">
         <dt style="color: var(--text-3)">Share of profit</dt>
         <dd style="margin: 0">{{ c.share }}</dd>
       </div>
-      <div style="height: 4px; border-radius: 2px; background: var(--surface-2)">
+      <div style="height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden">
         <div style="height: 100%; width: {{ c.share_width }}; background: var(--accent); border-radius: 2px"></div>
       </div>
     </div>
   </dl>
+</article>
+{% endmacro %}
+
+{#- The phone variant of an asset card, as in design/reference/03-overview-phone.html. -#}
+{% macro asset_card_phone(c) %}
+<article style="background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px">
+    <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+      <h3 style="margin: 0; font-size: 15px; font-weight: 600">{{ c.name }}</h3>
+      <div style="font-size: 12px; color: var(--text-3)">{{ c.phone_sub }}</div>
+    </div>
+    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px">
+      <div style="font-size: 17px; font-weight: 500; letter-spacing: -0.01em; white-space: nowrap">{{ c.value }}</div>
+      {%- if let Some(d) = c.pnl %}
+      <div style="font-size: 12px; white-space: nowrap; color: {{ d.tone.color() }}">{% if !d.arrow().is_empty() %}{{ d.arrow() }} {% endif %}{{ d.text }} · {{ c.pnl_percent }}</div>
+      {%- else %}
+      <div style="font-size: 12px; white-space: nowrap; color: var(--text-3)">No price</div>
+      {%- endif %}
+    </div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 12px">
+    {%- if let Some(path) = c.spark %}
+    <svg width="100%" height="28" viewBox="0 0 96 32" preserveAspectRatio="none" aria-hidden="true" style="flex: 1 1 auto"><path d="{{ path }}" fill="none" stroke="var(--text-3)" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+    {%- else %}
+    <span style="flex: 1 1 auto"></span>
+    {%- endif %}
+    <div style="flex: 0 0 auto; font-size: 12px; color: var(--text-3); text-align: right">{{ c.share }} of profit<div style="font-size: 12px">invested {{ c.invested }}</div></div>
+  </div>
 </article>
 {% endmacro %}
 

@@ -2,22 +2,27 @@
 //! and Contributed tiles, and the value chart with the stepped contributions and the dashed
 //! "all-in VWCE" benchmark. The 1M / 6M / YTD / 1Y / All switch and the benchmark checkbox
 //! re-render the panel through htmx; each state also has its own URL (`/?period=6M&bench=off`),
-//! so they work as plain links and survive a reload. The asset cards are P21.
+//! so they work as plain links and survive a reload. The asset cards under the panel
+//! ([`crate::assets`]) cover all time, so the switch leaves them alone and only full page loads
+//! build them.
 
 use askama::Template;
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::response::{Html, IntoResponse, Response};
 use chrono::{Datelike, NaiveDate};
+use portfolio_core::history::chart_dates;
 use portfolio_core::period::{Period, PeriodError, PeriodView};
+use portfolio_db::gold::list_coins;
 use portfolio_db::transactions::load_ledger;
-use portfolio_sources::history::{PeriodChart, period_chart};
+use portfolio_sources::history::{PeriodChart, period_chart, value_series};
 use portfolio_sources::periods::period_views;
 use portfolio_sources::valuation::{PortfolioReport, fetch_inputs, report, requirements};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
-use crate::base::{Page, Shell};
+use crate::assets::asset_cards;
+use crate::base::{AssetCard, Page, Shell};
 use crate::chart::{self, Chart};
 use crate::format::{self, Delta};
 use crate::{AppError, AppState};
@@ -206,6 +211,8 @@ pub struct OverviewPage {
     pub shell: Shell,
     /// The rendered [`OverviewPanel`] or [`OverviewError`].
     pub panel: String,
+    /// Ranked by profit; empty when the portfolio cannot be valued.
+    pub assets: Vec<AssetCard>,
 }
 
 /// The panel's place when the portfolio cannot be valued.
@@ -225,12 +232,19 @@ fn is_htmx(headers: &HeaderMap) -> bool {
     headers.get("hx-request").is_some_and(|v| v == "true")
 }
 
-/// The panel for today, or why there is none (a contribution's rate is missing).
+struct Built {
+    /// The panel, or why there is none (a contribution's rate is missing).
+    panel: Result<OverviewPanel, String>,
+    assets: Vec<AssetCard>,
+}
+
+/// The panel for today and, when `with_assets`, the asset cards.
 async fn build(
     state: &AppState,
     period: Period,
     bench: bool,
-) -> Result<Result<OverviewPanel, String>, AppError> {
+    with_assets: bool,
+) -> Result<Built, AppError> {
     let s = state.sources();
     let today = s.clock.today;
     let ledger = load_ledger(&state.pool).await?;
@@ -241,21 +255,49 @@ async fn build(
             for p in &inputs.problems {
                 eprintln!("overview: {p}");
             }
-            return Ok(Err(format!("The portfolio cannot be valued: {e}")));
+            return Ok(Built {
+                panel: Err(format!("The portfolio cannot be valued: {e}")),
+                assets: Vec::new(),
+            });
         }
     };
     let periods = period_views(&ledger, &report, &s).await;
     let series = period_chart(&ledger, &report, period, &s).await;
+    let mut problems: Vec<String> = Vec::new();
+    let assets = if with_assets {
+        // The sparklines span all time: the All chart's days, already valued when the panel
+        // shows All, and served from the price caches otherwise.
+        let all_time = if period == Period::All {
+            series.assets.clone()
+        } else {
+            match report.contribution_flows.iter().map(|f| f.date).min() {
+                Some(first) => {
+                    let v = value_series(&ledger, &chart_dates(first, today), &s).await;
+                    problems.extend(v.problems);
+                    v.assets
+                }
+                None => Default::default(),
+            }
+        };
+        let coins = list_coins(&state.pool).await?;
+        asset_cards(&report.pnl, &report.attribution, &ledger, &coins, &all_time)
+    } else {
+        Vec::new()
+    };
     for p in report
         .problems
         .iter()
         .chain(&periods.problems)
         .chain(&series.problems)
+        .chain(&problems)
     {
         eprintln!("overview: {p}");
     }
     let view = periods.view(period).expect("period_views has every period");
-    Ok(Ok(OverviewPanel::new(&report, view, &series, bench)))
+    Ok(Built {
+        panel: Ok(OverviewPanel::new(&report, view, &series, bench)),
+        assets,
+    })
 }
 
 pub async fn show(
@@ -265,16 +307,22 @@ pub async fn show(
 ) -> Result<Response, AppError> {
     let period = parse_period(q.period.as_deref());
     let bench = q.bench.as_deref() != Some("off");
-    let panel = build(&state, period, bench).await?;
-    let html = match panel {
+    let htmx = is_htmx(&headers);
+    let built = build(&state, period, bench, !htmx).await?;
+    let panel = match built.panel {
         Ok(p) => p.render()?,
         Err(error) => OverviewError { error }.render()?,
     };
-    if is_htmx(&headers) {
-        return Ok(Html(html).into_response());
+    if htmx {
+        return Ok(Html(panel).into_response());
     }
     let shell = Shell::load(&state, &headers, Page::Overview).await?;
-    Ok(Html(OverviewPage { shell, panel: html }.render()?).into_response())
+    let page = OverviewPage {
+        shell,
+        panel,
+        assets: built.assets,
+    };
+    Ok(Html(page.render()?).into_response())
 }
 
 #[cfg(test)]

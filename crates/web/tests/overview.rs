@@ -148,3 +148,61 @@ async fn the_switch_returns_just_the_panel_for_htmx() {
         "{fallback}"
     );
 }
+
+#[tokio::test]
+async fn asset_cards_are_on_the_full_page_only() {
+    let router = setup().await;
+    // Cash only: no asset, so no Assets section.
+    let page = body(&router, "/", false).await;
+    assert!(!page.contains("earned most"), "{page}");
+}
+
+#[tokio::test]
+async fn an_unpriced_coin_gets_an_unranked_card() {
+    use portfolio_db::gold::{NewCoin, add_coin};
+
+    let pool = open_in_memory().await.unwrap();
+    add_coin(
+        &pool,
+        &NewCoin {
+            label: None,
+            purchased_on: d("2026-02-02"),
+            purchase_price_pln: Decimal::from(1600),
+            fine_weight_g: Decimal::from_str("3.11").unwrap(),
+            manual_quote_pln: None,
+        },
+    )
+    .await
+    .unwrap();
+    // NBP does not answer, so the coin has no price.
+    let market = Market {
+        nbp: NbpClient::with_base_url("http://127.0.0.1:9").unwrap(),
+        kraken: KrakenClient::with_base_url("http://127.0.0.1:9").unwrap(),
+        alphavantage: None,
+        gold_buyback_factor: Decimal::ONE,
+    };
+    let router = app(AppState {
+        pool,
+        market: Arc::new(market),
+        today: Arc::new(|| d("2026-10-15")),
+        now: Arc::new(Utc::now),
+    });
+
+    let page = body(&router, "/?period=6M", false).await;
+    assert!(page.contains("earned most → least"), "{page}");
+    // Desktop and phone cards: name, subtitles, "No price" instead of a rank and a P&L.
+    assert!(page.contains(">Gold</h3>"), "{page}");
+    assert!(page.contains(">Physical · 1 coin, 1/10 oz</div>"), "{page}");
+    assert!(page.contains(">1 coin · 1/10 oz</div>"), "{page}");
+    assert_eq!(page.matches("No price</").count(), 2, "{page}");
+    assert!(!page.contains(">#1</span>"), "{page}");
+    assert!(page.contains(">1 600,00 zł</dd>"), "{page}");
+    assert!(page.contains("invested 1 600,00 zł"), "{page}");
+    assert!(page.contains("— of profit"), "{page}");
+    // No priced day: no sparkline.
+    assert!(!page.contains(r#"viewBox="0 0 96 32""#), "{page}");
+
+    // The period switch swaps only the panel: no cards in it.
+    let panel = body(&router, "/?period=1M", true).await;
+    assert!(!panel.contains("earned most"), "{panel}");
+}

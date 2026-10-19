@@ -1,5 +1,25 @@
 {% extends "layout.html" %}
+{% import "ui.html" as ui %}
 {% block title %}Overview · Portfel{% endblock %}
 {% block content %}
 {{ panel|safe }}
+{%- if !assets.is_empty() %}
+{#- Not part of the htmx panel: the cards are all time, whatever the period. -#}
+<section aria-labelledby="assets-h" class="as-section" style="display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+<h2 id="assets-h" style="margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em">Assets <span style="font-weight: 400; color: var(--text-3)">· earned most → least</span></h2>
+<span class="as-desk" style="font-size: 13px; color: var(--text-3)">All time</span>
+</div>
+<div class="as-desk" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 16px">
+{%- for c in assets %}
+{% call ui::asset_card(c) %}{% endcall %}
+{%- endfor %}
+</div>
+<div class="as-phone" style="flex-direction: column; gap: 12px">
+{%- for c in assets %}
+{% call ui::asset_card_phone(c) %}{% endcall %}
+{%- endfor %}
+</div>
+</section>
+{%- endif %}
 {% endblock %}

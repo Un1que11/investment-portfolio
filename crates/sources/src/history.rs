@@ -29,6 +29,9 @@ const KRAKEN: &str = "kraken";
 pub struct ValueSeries {
     /// One point per day asked for, in the same order.
     pub points: Vec<ValuePoint>,
+    /// Each asset's value on the days it was held (quantity not zero), ascending; None on a day
+    /// it had no price. For the asset cards' sparklines.
+    pub assets: BTreeMap<String, Vec<(NaiveDate, Option<Decimal>)>>,
     /// Why some points have no value, for the page.
     pub problems: Vec<String>,
 }
@@ -98,6 +101,7 @@ pub async fn value_series(
     }
 
     let mut points = Vec::with_capacity(dates.len());
+    let mut assets: BTreeMap<String, Vec<(NaiveDate, Option<Decimal>)>> = BTreeMap::new();
     for (date, h) in dates.iter().zip(&holdings) {
         let mut positions: BTreeMap<&str, Option<Decimal>> = BTreeMap::new();
         for (asset, quantity) in &h.assets {
@@ -112,6 +116,7 @@ pub async fn value_series(
                 kraken_on(asset, *quantity, *date, s, &mut down).await
             };
             positions.insert(asset, v);
+            assets.entry(asset.clone()).or_default().push((*date, v));
         }
         points.push(value_point(
             ledger,
@@ -140,7 +145,11 @@ pub async fn value_series(
             first.missing.join(", ")
         ));
     }
-    ValueSeries { points, problems }
+    ValueSeries {
+        points,
+        assets,
+        problems,
+    }
 }
 
 /// One day of the Overview chart.
@@ -157,6 +166,8 @@ pub struct ChartPoint {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PeriodChart {
     pub points: Vec<ChartPoint>,
+    /// Each asset's value over the period ([`ValueSeries::assets`]).
+    pub assets: BTreeMap<String, Vec<(NaiveDate, Option<Decimal>)>>,
     /// Why some points have no value or benchmark, for the page.
     pub problems: Vec<String>,
 }
@@ -179,6 +190,7 @@ pub async fn period_chart(
     let dates = chart_dates(period.start(end).unwrap_or(first), end);
     let series = value_series(ledger, &dates, s).await;
     let mut problems = series.problems;
+    let assets = series.assets;
 
     let start_value = series.points.first().and_then(|p| p.value);
     let benchmark: Vec<Option<Decimal>> =
@@ -216,7 +228,11 @@ pub async fn period_chart(
             benchmark,
         })
         .collect();
-    PeriodChart { points, problems }
+    PeriodChart {
+        points,
+        assets,
+        problems,
+    }
 }
 
 /// Every coin bought by `date`, valued on it.

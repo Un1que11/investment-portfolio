@@ -193,6 +193,25 @@ async fn each_point_is_the_portfolio_on_its_day() {
             point("2026-10-14", dec!(2477.7800), dec!(2270.47316796)),
         ]
     );
+    // Per asset, only the days it was held: the coin on all four, BTC from 13 Oct (bought
+    // that day; the figures are the coin and BTC parts of the totals above).
+    assert_eq!(
+        series.assets["GOLD_COINS"],
+        [
+            (d("2026-10-01"), Some(dec!(1530.84463))),
+            (d("2026-10-12"), Some(dec!(1552.146575))),
+            (d("2026-10-13"), Some(dec!(1554.451085))),
+            (d("2026-10-14"), Some(dec!(1557.73058))),
+        ]
+    );
+    assert_eq!(
+        series.assets["BTC"],
+        [
+            (d("2026-10-13"), Some(dec!(650.02321608))),
+            (d("2026-10-14"), Some(dec!(637.13120796))),
+        ]
+    );
+    assert_eq!(series.assets.len(), 2);
     assert!(series.problems.is_empty(), "{:?}", series.problems);
 }
 
@@ -232,6 +251,9 @@ async fn a_failed_provider_is_asked_once_and_its_days_have_no_value() {
             .all(|p| p.contributions == Some(dec!(2477.7800)))
     );
     assert_eq!(series.points[1].missing, ["BTC"]);
+    // BTC's own days have no value either; the coin keeps its value.
+    let btc: Vec<Option<Decimal>> = series.assets["BTC"].iter().map(|(_, v)| *v).collect();
+    assert_eq!(btc, [None, None]);
     assert_eq!(series.problems.len(), 2, "{:?}", series.problems);
     assert!(series.problems[0].starts_with("chart: kraken failed"));
     assert_eq!(

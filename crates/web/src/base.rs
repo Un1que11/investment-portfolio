@@ -337,48 +337,77 @@ pub fn allocation_bar(actual: &[Decimal], target: &[Decimal]) -> Vec<BarSegment>
         .collect()
 }
 
-/// The figures of an asset card (`screens/09`, "Asset card"; P21 fills them from the report).
+/// The figures of an asset card (`screens/09`, "Asset card"; the Overview fills them from the
+/// report, see [`crate::assets`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssetCard {
     pub name: String,
+    /// Under the name on desktop: "Physical · 1 coin, 1/10 oz".
     pub sub: String,
-    pub rank: usize,
+    /// Under the name on phones (`screens/03`): "1 coin · 1/10 oz".
+    pub phone_sub: String,
+    /// Place in the profit ranking; None for an asset without a price.
+    pub rank: Option<usize>,
     pub value: String,
     pub spark: Option<String>,
     pub invested: String,
-    pub pnl: Delta,
+    /// None without a price.
+    pub pnl: Option<Delta>,
     pub pnl_percent: String,
     pub share: String,
     pub share_width: String,
 }
 
+/// An asset's figures in PLN, as `core` computes them (fractions for the ratios).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CardFigures {
+    /// None without a price.
+    pub value: Option<Decimal>,
+    /// What is still in the asset: cost minus proceeds and income.
+    pub invested: Decimal,
+    pub pnl: Option<Decimal>,
+    /// P&L / cost; None without a price or without a cost.
+    pub pnl_ratio: Option<Decimal>,
+    /// The asset's part of the total profit; None when there is no total to share.
+    pub share: Option<Decimal>,
+}
+
+impl CardFigures {
+    /// A holding with no sales or income: invested = cost, P&L = value - invested.
+    pub fn held(value: Decimal, invested: Decimal, share: Decimal) -> CardFigures {
+        let pnl = value - invested;
+        CardFigures {
+            value: Some(value),
+            invested,
+            pnl: Some(pnl),
+            pnl_ratio: (!invested.is_zero()).then(|| pnl / invested),
+            share: Some(share),
+        }
+    }
+}
+
 impl AssetCard {
-    /// `share` is the asset's part of the total profit (a fraction).
     pub fn new(
         name: &str,
         sub: &str,
-        rank: usize,
-        value: Decimal,
-        invested: Decimal,
-        share: Decimal,
+        phone_sub: &str,
+        rank: Option<usize>,
+        figures: &CardFigures,
         series: &[Decimal],
     ) -> AssetCard {
-        let pnl = value - invested;
+        let dash = || "—".to_owned();
         AssetCard {
             name: name.into(),
             sub: sub.into(),
+            phone_sub: phone_sub.into(),
             rank,
-            value: format::pln(value),
+            value: figures.value.map_or_else(dash, format::pln),
             spark: format::sparkline_path(series),
-            invested: format::pln(invested),
-            pnl: format::delta_pln(pnl),
-            pnl_percent: if invested.is_zero() {
-                "—".into()
-            } else {
-                format::signed_percent(pnl / invested)
-            },
-            share: format::percent(share),
-            share_width: format::css_percent(share),
+            invested: format::pln(figures.invested),
+            pnl: figures.pnl.map(format::delta_pln),
+            pnl_percent: figures.pnl_ratio.map_or_else(dash, format::signed_percent),
+            share: figures.share.map_or_else(dash, format::percent),
+            share_width: format::css_percent(figures.share.unwrap_or_default()),
         }
     }
 }
@@ -469,10 +498,9 @@ impl ComponentsPage {
             card: AssetCard::new(
                 "Gold",
                 "Physical · 1 coin, 1/10 oz",
-                1,
-                sample("2100"),
-                sample("1640"),
-                sample("0.327"),
+                "1 coin · 1/10 oz",
+                Some(1),
+                &CardFigures::held(sample("2100"), sample("1640"), sample("0.327")),
                 &[
                     "1640", "1660", "1700", "1720", "1800", "1850", "1830", "1880", "1950", "1990",
                     "1940", "1960", "1990", "2010", "2030", "2060", "2100",
@@ -642,17 +670,17 @@ mod tests {
         let card = AssetCard::new(
             "Gold",
             "Physical",
-            1,
-            dec!(2100),
-            dec!(1640),
-            dec!(0.327),
+            "1 coin",
+            Some(1),
+            &CardFigures::held(dec!(2100), dec!(1640), dec!(0.327)),
             &[dec!(1), dec!(2)],
         );
         let nb = |s: &str| s.replace(' ', "\u{a0}");
         assert_eq!(card.value, nb("2 100,00 zł"));
         assert_eq!(card.invested, nb("1 640,00 zł"));
-        assert_eq!(card.pnl.text, nb("+460,00 zł"));
-        assert_eq!(card.pnl.arrow(), "▲");
+        let pnl = card.pnl.clone().unwrap();
+        assert_eq!(pnl.text, nb("+460,00 zł"));
+        assert_eq!(pnl.arrow(), "▲");
         assert_eq!(card.pnl_percent, "+28,0%");
         assert_eq!(
             (card.share.as_str(), card.share_width.as_str()),
@@ -660,10 +688,64 @@ mod tests {
         );
         assert_eq!(card.spark.as_deref(), Some("M0.0 30.0 L96.0 2.0"));
 
-        let nothing_in = AssetCard::new("X", "", 2, dec!(0), dec!(0), dec!(0), &[]);
+        let nothing_in = AssetCard::new(
+            "X",
+            "",
+            "",
+            Some(2),
+            &CardFigures::held(dec!(0), dec!(0), dec!(0)),
+            &[],
+        );
         assert_eq!(
             (nothing_in.pnl_percent.as_str(), nothing_in.spark),
             ("—", None)
         );
+    }
+
+    #[test]
+    fn an_unpriced_asset_card_shows_dashes() {
+        // 500 zł in, no price: no value, P&L or share; the bar is empty.
+        let card = AssetCard::new(
+            "Ether",
+            "ETH · Kraken",
+            "ETH · Kraken",
+            None,
+            &CardFigures {
+                value: None,
+                invested: dec!(500),
+                pnl: None,
+                pnl_ratio: None,
+                share: None,
+            },
+            &[],
+        );
+        assert_eq!(card.value, "—");
+        assert_eq!(card.invested, "500,00\u{a0}zł");
+        assert_eq!(card.pnl, None);
+        assert_eq!(
+            (
+                card.pnl_percent.as_str(),
+                card.share.as_str(),
+                card.share_width.as_str()
+            ),
+            ("—", "—", "0%")
+        );
+    }
+
+    #[test]
+    fn a_negative_share_has_an_empty_bar() {
+        // Lost 150 of a 1 000 total profit: −15,0%, and the bar does not go below zero.
+        let card = AssetCard::new(
+            "Gold",
+            "",
+            "",
+            Some(3),
+            &CardFigures::held(dec!(1850), dec!(2000), dec!(-0.15)),
+            &[],
+        );
+        assert_eq!(card.share, "\u{2212}15,0%");
+        assert_eq!(card.share_width, "0%");
+        assert_eq!(card.pnl.unwrap().arrow(), "▼");
+        assert_eq!(card.pnl_percent, "\u{2212}7,5%");
     }
 }
