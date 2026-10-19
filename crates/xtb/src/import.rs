@@ -1,5 +1,7 @@
 //! Writing parsed XTB operations into `transactions`, idempotently.
 
+use std::collections::HashSet;
+
 use portfolio_db::DbDecimal;
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
@@ -57,6 +59,40 @@ fn account_for(product: &str) -> Result<(String, &'static str), ImportError> {
         "IKE" => Ok(("XTB IKE".into(), "ike")),
         other => Err(ImportError::UnknownProduct(other.to_owned())),
     }
+}
+
+/// Checks, without touching the database, that every operation maps to a known account and
+/// instrument, so [`import`] will not stop half-way through a review that looked fine.
+pub fn validate(export: &Export) -> Result<(), ImportError> {
+    for op in &export.operations {
+        account_for(&op.product)?;
+        if let OperationKind::Purchase { ticker, .. } = &op.kind
+            && !INSTRUMENTS.iter().any(|i| i.0 == ticker)
+        {
+            return Err(ImportError::UnknownInstrument(ticker.clone()));
+        }
+    }
+    Ok(())
+}
+
+/// For each operation of `export`, in order: whether it was imported before (its `external_id`
+/// is already in `transactions`), which is what [`import`] would skip.
+pub async fn already_imported(
+    pool: &SqlitePool,
+    export: &Export,
+) -> Result<Vec<bool>, sqlx::Error> {
+    let stored: HashSet<String> = sqlx::query_scalar::<_, String>(
+        "SELECT external_id FROM transactions WHERE source = 'xtb'",
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .collect();
+    Ok(export
+        .operations
+        .iter()
+        .map(|op| stored.contains(&external_id(op)))
+        .collect())
 }
 
 /// `transactions.external_id` for an operation.

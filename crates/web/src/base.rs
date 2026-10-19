@@ -131,11 +131,6 @@ impl Page {
         }
     }
 
-    /// Built to the design yet. The others are shown in the nav but not linked (P24).
-    pub fn built(self) -> bool {
-        !matches!(self, Page::Import)
-    }
-
     /// The nav icon from `design/reference/01-overview.html`.
     fn icon(self) -> &'static str {
         match self {
@@ -165,7 +160,6 @@ pub struct NavItem {
     pub href: &'static str,
     pub icon: &'static str,
     pub current: bool,
-    pub built: bool,
 }
 
 /// The price sync line in the sidebar footer, and its short form in the phone top bar.
@@ -228,7 +222,6 @@ impl Shell {
                     href: p.path(),
                     icon: p.icon(),
                     current: p == page,
-                    built: p.built(),
                 })
                 .collect(),
             sync,
@@ -613,7 +606,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_marks_the_current_page_and_unbuilt_ones() {
+    fn shell_marks_the_current_page() {
         let shell = Shell::new(Page::Gold, None, sync_status(None, NaiveDate::MIN));
         assert_eq!((shell.theme, shell.chosen), (Theme::Light, false));
         let labels: Vec<_> = shell.nav.iter().map(|n| n.label).collect();
@@ -625,13 +618,8 @@ mod tests {
             .map(|n| n.href)
             .collect();
         assert_eq!(current, ["/gold"]);
-        let built: Vec<_> = shell
-            .nav
-            .iter()
-            .filter(|n| n.built)
-            .map(|n| n.href)
-            .collect();
-        assert_eq!(built, ["/", "/allocation", "/ikze", "/gold"]);
+        let hrefs: Vec<_> = shell.nav.iter().map(|n| n.href).collect();
+        assert_eq!(hrefs, ["/", "/allocation", "/ikze", "/gold", "/import"]);
 
         let dark = Shell::new(
             Page::Gold,

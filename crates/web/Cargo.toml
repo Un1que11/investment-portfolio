@@ -8,12 +8,14 @@ publish.workspace = true
 
 [dependencies]
 askama.workspace = true
-axum = { workspace = true, features = ["form"] }
+axum = { workspace = true, features = ["form", "multipart"] }
+base64.workspace = true
 chrono.workspace = true
 dotenvy.workspace = true
 portfolio-core.workspace = true
 portfolio-db.workspace = true
 portfolio-sources.workspace = true
+portfolio-xtb.workspace = true
 rust_decimal.workspace = true
 serde.workspace = true
 sqlx.workspace = true
