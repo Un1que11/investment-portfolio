@@ -34,7 +34,7 @@
 - [x] P21. Asset cards on Overview: Gold, VWCE, Bitcoin, Ether ranked by profit with #rank, value, sparkline, invested, P&L, share of profit bar; phone variant as in `screens/03`. Depends on P20.
 - [x] P22. Allocation (`screens/04`): actual vs dashed target bars, drift table with BTC/ETH sub-rows and neutral drift bars, top-up plan panel (amount input with htmx, chips 942 / 2 000 / 5 000 zł, include paused, after-top-up bar, remaining IKZE room note). Depends on P28, P31.
 - [x] P23. IKZE (`screens/05`): limit progress bar with hatched remainder, December reminder banner with days left and a suggested split of the remaining limit over the remaining months, 12%/32% deduction toggle, contributions-by-month SVG bars with dashed "needed to max out" months. Depends on P28.
-- [ ] P29. Gold page restyle (`screens/06`): summary tiles, coins table, inline add form with field validation as in the components sheet, "Purchases paused" badge. Depends on P28, P31.
+- [x] P29. Gold page restyle (`screens/06`): summary tiles, coins table, inline add form with field validation as in the components sheet, "Purchases paused" badge. Depends on P28, P31.
 - [ ] P24. XTB import (`screens/07`): Upload → Review → Done steps, preview table (New vs Already imported, toggle), confirm "Add N operations", Cancel. Depends on P28.
 - [ ] P30. States (`screens/08`): empty overview with Import / Add a coin actions, loading skeleton, stale price badge and "source unavailable" banner with Retry, single-point chart, empty import drop zone, sidebar sync status variants. Depends on P20.
 

@@ -234,8 +234,13 @@ Pages:
   months still to top up dashed. `?rate=12|32` picks the bracket (default `[tax] rate_percent`);
   the switch swaps the card through htmx. "Plan a top-up" opens `/allocation` with one suggested top-up. It needs no price, only the NBP rate of a deposit in
   another currency; a missing rate or a year without a limit is said instead of a total.
-- `/gold`: add, list and delete physical gold coins (purchase date, price in PLN, fine gold
-  weight, optional manual quote and label). Amounts may be typed with a decimal comma.
+- `/gold`: the coins (`design/screens/06`): valuation, paid, P&L and holding tiles, the coins
+  table (each coin's value and P&L, a remove button), and the inline add form (name, date, price;
+  fine gold weight and a dealer quote under "Weight and dealer quote") with each field's error
+  under it. Coins are valued at the NBP price per gram x weight x `[gold] buyback_factor`, or at
+  their dealer quote; without an NBP price the others show "—". The header says how coins are
+  valued and shows "Purchases paused" when `[paused] gold` is set. Adding and removing swap the
+  tiles, table and form through htmx. Amounts may be typed with a decimal comma.
 - `/components`: the shared components (number tile, delta badge, progress and allocation
   bars, asset card, table rows, buttons, inputs, status chips) with the design's sample figures,
   to compare with `design/screens/09-components.png`.
