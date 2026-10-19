@@ -1,7 +1,8 @@
 //! The Overview's asset cards (`design/screens/01` and `03`, "Assets · earned most → least"):
 //! one card per asset, in the order of `core`'s profit ranking ([`profit_attribution`]), with
 //! its value, a sparkline of its value over all time, what is still invested, its P&L and its
-//! share of the total profit. Assets without a price come last, unranked.
+//! share of the total profit. Assets without a price come last, unranked. When the portfolio as
+//! a whole has made no profit there is none to share, so no card shows a share.
 //!
 //! [`profit_attribution`]: portfolio_core::attribution::profit_attribution
 
@@ -104,6 +105,10 @@ pub fn spark_values(series: Option<&Vec<(NaiveDate, Option<Decimal>)>>) -> Vec<D
 
 /// The cards, ranked assets first (highest P&L first), then the unpriced ones by symbol.
 /// `series` is each asset's value over all time ([`portfolio_sources::history::ValueSeries`]).
+///
+/// A share of the profit is shown only while the total P&L is a gain: over a loss, `core`'s
+/// share (the asset's P&L over the total) flips sign, so the biggest loser would get a full bar
+/// and the asset that gained a negative share.
 pub fn asset_cards(
     pnl: &PortfolioPnl,
     attribution: &ProfitAttribution,
@@ -111,11 +116,12 @@ pub fn asset_cards(
     coins: &[Coin],
     series: &BTreeMap<String, Vec<(NaiveDate, Option<Decimal>)>>,
 ) -> Vec<AssetCard> {
+    let has_profit = pnl.pnl_if_complete().is_some_and(|t| t > Decimal::ZERO);
     let ranked = attribution
         .ranked
         .iter()
         .enumerate()
-        .map(|(i, (symbol, c))| (symbol, Some(i + 1), c.share_of_total));
+        .map(|(i, (symbol, c))| (symbol, Some(i + 1), c.share_of_total.filter(|_| has_profit)));
     let unpriced = attribution.unpriced.iter().map(|s| (s, None, None));
     ranked
         .chain(unpriced)
@@ -348,5 +354,64 @@ mod tests {
         let eth = &cards[2];
         assert_eq!((eth.value.as_str(), eth.pnl.is_none()), ("—", true));
         assert_eq!(plain(eth.invested.clone()), "1 000,00 zł");
+    }
+
+    #[test]
+    fn no_share_of_profit_when_the_portfolio_is_at_a_loss() {
+        // 3 000 in, 2 900 now: -100 in total. VWCE 1000 -> 1050 (+50), BTC 1000 -> 850
+        // (-150), ETH 1000 -> 1000 (0). core's shares are 50 / -100 = -50%, -150 / -100 =
+        // +150% and 0%: no profit to share, so every card shows "—" and an empty bar.
+        let pnl = PortfolioPnl {
+            value: dec!(2900),
+            contributions: dec!(3000),
+            complete: true,
+            by_asset: [
+                ("VWCE", asset(dec!(1000), dec!(0), Some(dec!(1050)))),
+                ("BTC", asset(dec!(1000), dec!(0), Some(dec!(850)))),
+                ("ETH", asset(dec!(1000), dec!(0), Some(dec!(1000)))),
+            ]
+            .into_iter()
+            .map(|(s, a)| (s.to_owned(), a))
+            .collect(),
+        };
+        let attribution = profit_attribution(&pnl);
+        assert_eq!(attribution.ranked[2].1.share_of_total, Some(dec!(1.5)));
+        let cards = asset_cards(&pnl, &attribution, &[], &[], &BTreeMap::new());
+
+        let shown: Vec<(&str, &str, &str)> = cards
+            .iter()
+            .map(|c| (c.name.as_str(), c.share.as_str(), c.share_width.as_str()))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                ("VWCE", "—", "0%"),
+                ("Ether", "—", "0%"),
+                ("Bitcoin", "—", "0%")
+            ]
+        );
+        // The ranking and the P&L stay.
+        assert_eq!(cards[2].rank, Some(3));
+        assert_eq!(plain(cards[2].pnl.clone().unwrap().text), "-150,00 zł");
+    }
+
+    #[test]
+    fn no_share_of_profit_when_the_portfolio_breaks_even() {
+        // 2 000 in, 2 000 now: VWCE +100, BTC -100. core has no total to share (zero).
+        let pnl = PortfolioPnl {
+            value: dec!(2000),
+            contributions: dec!(2000),
+            complete: true,
+            by_asset: [
+                ("VWCE", asset(dec!(1000), dec!(0), Some(dec!(1100)))),
+                ("BTC", asset(dec!(1000), dec!(0), Some(dec!(900)))),
+            ]
+            .into_iter()
+            .map(|(s, a)| (s.to_owned(), a))
+            .collect(),
+        };
+        let cards = asset_cards(&pnl, &profit_attribution(&pnl), &[], &[], &BTreeMap::new());
+        let shares: Vec<&str> = cards.iter().map(|c| c.share.as_str()).collect();
+        assert_eq!(shares, ["—", "—"]);
     }
 }
