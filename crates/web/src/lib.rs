@@ -77,7 +77,7 @@ impl AppState {
 
 /// Builds the application router. Kept separate from `main` so tests can drive it in-process.
 ///
-/// The Allocation and IKZE pages also need the config: add it as a layer,
+/// The Allocation, IKZE and Gold pages also need the config: add it as a layer,
 /// `app(state).layer(Extension(Arc::new(config)))`; without it they answer 500.
 pub fn app(state: AppState) -> Router {
     Router::new()

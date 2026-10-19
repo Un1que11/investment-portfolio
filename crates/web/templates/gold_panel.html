@@ -1,54 +1,100 @@
-<section id="gold-panel">
-  <form class="add" method="post" action="/gold/coins" hx-post="/gold/coins" hx-target="#gold-panel" hx-swap="outerHTML">
-    <label>Purchased on
-      <input type="date" name="purchased_on" value="{{ form.purchased_on }}" required>
-      {% if let Some(e) = errors.purchased_on %}<span class="error">{{ e }}</span>{% endif %}
-    </label>
-    <label>Price (PLN)
-      <input name="purchase_price" inputmode="decimal" value="{{ form.purchase_price }}" required>
-      {% if let Some(e) = errors.purchase_price %}<span class="error">{{ e }}</span>{% endif %}
-    </label>
-    <label>Fine gold (g)
-      <input name="fine_weight" inputmode="decimal" value="{{ form.fine_weight }}" required>
-      {% if let Some(e) = errors.fine_weight %}<span class="error">{{ e }}</span>{% endif %}
-    </label>
-    <label>Manual quote (PLN, optional)
-      <input name="manual_quote" inputmode="decimal" value="{{ form.manual_quote }}">
-      {% if let Some(e) = errors.manual_quote %}<span class="error">{{ e }}</span>{% endif %}
-    </label>
-    <label>Label (optional)
-      <input name="label" maxlength="100" value="{{ form.label }}">
-      {% if let Some(e) = errors.label %}<span class="error">{{ e }}</span>{% endif %}
-    </label>
-    <button type="submit">Add coin</button>
-  </form>
-
-  {% if coins.is_empty() %}
-  <p class="muted">No coins yet.</p>
-  {% else %}
-  <table>
-    <thead>
-      <tr><th>Purchased</th><th>Label</th><th class="num">Price (PLN)</th><th class="num">Fine gold (g)</th><th class="num">Manual quote</th><th></th></tr>
-    </thead>
-    <tbody>
-      {% for coin in coins %}
-      <tr id="coin-{{ coin.id }}">
-        <td>{{ coin.purchased_on }}</td>
-        <td>{{ coin.label }}</td>
-        <td class="num">{{ coin.purchase_price }}</td>
-        <td class="num">{{ coin.fine_weight }}</td>
-        <td class="num">{{ coin.manual_quote }}</td>
-        <td>
-          <form method="post" action="/gold/coins/{{ coin.id }}/delete" hx-post="/gold/coins/{{ coin.id }}/delete" hx-target="#gold-panel" hx-swap="outerHTML" hx-confirm="Delete this coin?">
-            <button type="submit">Delete</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-    <tfoot>
-      <tr><th colspan="2">{{ coins.len() }} coin(s)</th><th class="num">{{ total_price }}</th><th class="num">{{ total_weight }}</th><th colspan="2"></th></tr>
-    </tfoot>
-  </table>
-  {% endif %}
+{#- The summary tiles, the coins table and the add form (design/reference/06-gold.html): what
+    htmx swaps after a coin is added or removed. Field errors as in screens/09-components. -#}
+<div id="gold-panel" style="display: flex; flex-direction: column; gap: 24px">
+<section aria-label="Gold summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px">
+<div style="padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px"><div style="font-size: 12px; color: var(--text-3)">Valuation</div><div style="font-size: 26px; font-weight: 500; letter-spacing: -0.02em">{{ summary.value }}</div></div>
+<div style="padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px"><div style="font-size: 12px; color: var(--text-3)">Paid</div><div style="font-size: 26px; font-weight: 500; letter-spacing: -0.02em">{{ summary.paid }}</div></div>
+<div style="padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px"><div style="font-size: 12px; color: var(--text-3)">P&amp;L</div>
+{%- if let Some(p) = summary.pnl %}
+<div style="font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: {{ p.delta.tone.color() }}">{% if !p.delta.arrow().is_empty() %}{{ p.delta.arrow() }} {% endif %}{{ p.delta.text }} · {{ p.percent }}</div>
+{%- else %}
+<div style="font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: var(--text-3)">—</div>
+{%- endif %}
+</div>
+<div style="padding: 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; gap: 6px"><div style="font-size: 12px; color: var(--text-3)">Holding</div><div style="font-size: 26px; font-weight: 500; letter-spacing: -0.02em">{{ summary.holding }}</div></div>
 </section>
+
+<section aria-labelledby="coins-h" style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden">
+<h2 id="coins-h" style="margin: 0; padding: 20px 24px 4px; font-size: 15px; font-weight: 600">Coins</h2>
+{%- if coins.is_empty() %}
+<div style="padding: 32px 24px; text-align: center; font-size: 14px; color: var(--text-3); border-top: 1px solid var(--line); margin-top: 16px">No coins yet — add your first one below.</div>
+{%- else %}
+<div style="overflow-x: auto">
+<table style="width: 100%; min-width: 720px; border-collapse: collapse; font-size: 14px">
+<thead>
+<tr style="color: var(--text-3); font-size: 12px; text-align: right">
+<th scope="col" style="text-align: left; font-weight: 400; padding: 14px 24px 10px">Coin</th>
+<th scope="col" style="text-align: left; font-weight: 400; padding: 14px 12px 10px">Bought</th>
+<th scope="col" style="font-weight: 400; padding: 14px 12px 10px">Paid</th>
+<th scope="col" style="font-weight: 400; padding: 14px 12px 10px">Valuation</th>
+<th scope="col" style="font-weight: 400; padding: 14px 12px 10px">P&amp;L</th>
+<th scope="col" style="padding: 14px 24px 10px 12px; width: 44px"><span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Actions</span></th>
+</tr>
+</thead>
+<tbody>
+{%- for c in coins %}
+<tr id="coin-{{ c.id }}" style="border-top: 1px solid var(--line); text-align: right">
+<th scope="row" style="text-align: left; font-weight: 500; padding: 14px 24px"><div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--line-2); display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-3); flex: 0 0 auto">Au</span><span style="display: flex; flex-direction: column; gap: 2px">{{ c.name }}<span style="font-size: 12px; font-weight: 400; color: var(--text-3)">{{ c.weight }}</span></span></div></th>
+<td style="text-align: left; padding: 14px 12px; color: var(--text-2)">{{ c.bought }}</td>
+<td style="padding: 14px 12px">{{ c.paid }}</td>
+<td style="padding: 14px 12px{% if c.pnl.is_none() %}; color: var(--text-3){% endif %}">{{ c.value }}{% if c.quoted %}<div style="font-size: 12px; color: var(--text-3)">dealer quote</div>{% endif %}</td>
+{%- if let Some(p) = c.pnl %}
+<td style="padding: 14px 12px; color: {{ p.delta.tone.color() }}">{% if !p.delta.arrow().is_empty() %}{{ p.delta.arrow() }} {% endif %}{{ p.delta.text }}<div style="font-size: 12px">{{ p.percent }}</div></td>
+{%- else %}
+<td style="padding: 14px 12px; color: var(--text-3)">—</td>
+{%- endif %}
+<td style="padding: 8px 16px 8px 12px"><form method="post" action="/gold/coins/{{ c.id }}/delete" hx-post="/gold/coins/{{ c.id }}/delete" hx-target="#gold-panel" hx-swap="outerHTML" hx-confirm="Remove this coin?" style="margin: 0"><button class="ghost" type="submit" aria-label="{{ c.remove_label() }}" style="width: 36px; height: 36px; border: 0; border-radius: 8px; background: transparent; color: var(--text-3); display: inline-flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5"/></svg></button></form></td>
+</tr>
+{%- endfor %}
+</tbody>
+</table>
+</div>
+{%- endif %}
+
+<form aria-label="Add a coin" method="post" action="/gold/coins" hx-post="/gold/coins" hx-target="#gold-panel" hx-swap="outerHTML" style="border-top: 1px solid var(--line); background: var(--bg); padding: 16px 24px 20px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin: 0">
+<div style="flex: 2 1 220px; display: flex; flex-direction: column; gap: 6px">
+<label for="coin-name" class="field-label">Coin</label>
+<input class="field" id="coin-name" name="label" type="text" maxlength="100" placeholder="1/10 oz coin" value="{{ form.label }}"{% if errors.label.is_some() %} aria-invalid="true" aria-describedby="coin-name-msg"{% endif %}>
+{%- if let Some(e) = errors.label %}<span id="coin-name-msg" class="field-error">{{ e }}</span>{% endif %}
+</div>
+<div style="flex: 1 1 160px; display: flex; flex-direction: column; gap: 6px">
+<label for="coin-date" class="field-label">Bought on</label>
+<input class="field" id="coin-date" name="purchased_on" type="date" value="{{ form.purchased_on }}"{% if errors.purchased_on.is_some() %} aria-invalid="true" aria-describedby="coin-date-msg"{% endif %}>
+{%- if let Some(e) = errors.purchased_on %}<span id="coin-date-msg" class="field-error">{{ e }}</span>{% endif %}
+</div>
+<div style="flex: 1 1 160px; display: flex; flex-direction: column; gap: 6px">
+<label for="coin-price" class="field-label">Paid</label>
+<div style="position: relative">
+<input class="field" id="coin-price" name="purchase_price" type="text" inputmode="decimal" placeholder="2 050,00" value="{{ form.purchase_price }}"{% if errors.purchase_price.is_some() %} aria-invalid="true" aria-describedby="coin-price-msg"{% endif %} style="width: 100%; padding: 0 36px 0 12px; text-align: right; font-variant-numeric: tabular-nums">
+<span aria-hidden="true" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--text-3)">zł</span>
+</div>
+{%- if let Some(e) = errors.purchase_price %}<span id="coin-price-msg" class="field-error">{{ e }}</span>{% endif %}
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span class="field-label" aria-hidden="true">&nbsp;</span>
+<button class="primary" type="submit" style="height: 44px; padding: 0 18px; border: 0; border-radius: 9px; background: var(--text); color: var(--bg); font-size: 14px; font-weight: 500; display: inline-flex; align-items: center; gap: 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Add coin</button>
+</div>
+<details{% if more_open() %} open{% endif %} style="flex: 1 1 100%; font-size: 12px; color: var(--text-3)">
+<summary style="cursor: pointer">Weight and dealer quote</summary>
+<div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-top: 12px">
+<div style="flex: 0 1 160px; display: flex; flex-direction: column; gap: 6px">
+<label for="coin-weight" class="field-label">Fine gold</label>
+<div style="position: relative">
+<input class="field" id="coin-weight" name="fine_weight" type="text" inputmode="decimal" value="{{ form.fine_weight }}"{% if errors.fine_weight.is_some() %} aria-invalid="true" aria-describedby="coin-weight-msg"{% endif %} style="width: 100%; padding: 0 30px 0 12px; text-align: right; font-variant-numeric: tabular-nums">
+<span aria-hidden="true" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--text-3)">g</span>
+</div>
+{%- if let Some(e) = errors.fine_weight %}<span id="coin-weight-msg" class="field-error">{{ e }}</span>{% endif %}
+</div>
+<div style="flex: 0 1 200px; display: flex; flex-direction: column; gap: 6px">
+<label for="coin-quote" class="field-label">Dealer quote (optional)</label>
+<div style="position: relative">
+<input class="field" id="coin-quote" name="manual_quote" type="text" inputmode="decimal" value="{{ form.manual_quote }}"{% if errors.manual_quote.is_some() %} aria-invalid="true" aria-describedby="coin-quote-msg"{% endif %} style="width: 100%; padding: 0 36px 0 12px; text-align: right; font-variant-numeric: tabular-nums">
+<span aria-hidden="true" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--text-3)">zł</span>
+</div>
+{%- if let Some(e) = errors.manual_quote %}<span id="coin-quote-msg" class="field-error">{{ e }}</span>{% endif %}
+</div>
+</div>
+</details>
+</form>
+</section>
+</div>

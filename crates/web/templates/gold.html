@@ -1,8 +1,20 @@
 {% extends "layout.html" %}
+{% import "ui.html" as ui %}
+{#- The Gold page, markup and inline styles from design/reference/06-gold.html. -#}
 {% block title %}Gold · Portfel{% endblock %}
 {% block content %}
-<div class="legacy">
-<h1>Gold coins</h1>
-{% include "gold_panel.html" %}
+<div style="display: flex; flex-direction: column; gap: 24px">
+
+<header style="display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 8px">
+<div style="display: flex; align-items: center; gap: 12px">
+<h1 style="margin: 0; font-size: 15px; font-weight: 500; color: var(--text-2)">Gold</h1>
+{%- if paused %}
+{% call ui::chip("paused", "Purchases paused") %}{% endcall %}
+{%- endif %}
+</div>
+<div style="font-size: 13px; color: var(--text-3)">{{ valued_at }}</div>
+</header>
+
+{{ panel|safe }}
 </div>
 {% endblock %}

@@ -1,11 +1,12 @@
 use std::str::FromStr;
 use std::sync::Arc;
 
-use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
+use axum::{Extension, Router};
 use chrono::{NaiveDate, Utc};
 use http_body_util::BodyExt;
+use portfolio_core::config::Config;
 use portfolio_db::gold::{NewCoin, add_coin, list_coins};
 use portfolio_db::open_in_memory;
 use portfolio_sources::kraken::KrakenClient;
@@ -26,9 +27,25 @@ fn dec(s: &str) -> Decimal {
 
 const TODAY: &str = "2026-10-15";
 
+const CONFIG: &str = r#"
+[targets]
+vwce = 55
+crypto = 25
+gold = 20
+[targets.crypto_split]
+btc = 75
+eth = 25
+[ikze.limits]
+2026 = "11304.00"
+[tax]
+rate_percent = 12
+[gold]
+buyback_factor = "1"
+"#;
+
 async fn setup() -> (Router, SqlitePool) {
     let pool = open_in_memory().await.unwrap();
-    // The gold page asks no price source: nothing listens on the discard port.
+    // Nothing listens on the discard port: every price is missing.
     let market = Market {
         nbp: NbpClient::with_base_url("http://127.0.0.1:9").unwrap(),
         kraken: KrakenClient::with_base_url("http://127.0.0.1:9").unwrap(),
@@ -41,7 +58,8 @@ async fn setup() -> (Router, SqlitePool) {
         today: Arc::new(|| NaiveDate::from_str(TODAY).unwrap()),
         now: Arc::new(Utc::now),
     };
-    (app(state), pool)
+    let config = Config::from_toml(CONFIG).unwrap();
+    (app(state).layer(Extension(Arc::new(config))), pool)
 }
 
 async fn send(router: &Router, request: Request<Body>) -> (StatusCode, String, Option<String>) {
@@ -129,11 +147,11 @@ fn parse_form_reports_every_invalid_field() {
     assert_eq!(
         errors,
         FieldErrors {
-            label: Some("at most 100 characters".into()),
-            purchased_on: Some("cannot be in the future".into()),
-            purchase_price: Some("must be more than 0".into()),
-            fine_weight: Some("must be more than 0".into()),
-            manual_quote: Some("enter a number like 1234.56".into()),
+            label: Some("At most 100 characters".into()),
+            purchased_on: Some("Cannot be in the future".into()),
+            purchase_price: Some("Must be more than 0".into()),
+            fine_weight: Some("Must be more than 0".into()),
+            manual_quote: Some("Enter an amount like 2 050,00".into()),
         }
     );
 }
@@ -144,23 +162,25 @@ fn parse_form_limits_decimal_places_and_checks_dates() {
 
     let errors = parse_form(&input, d(TODAY)).unwrap_err();
 
-    assert_eq!(
-        errors.purchased_on.as_deref(),
-        Some("enter a date (YYYY-MM-DD)")
-    );
+    assert_eq!(errors.purchased_on.as_deref(), Some("Enter a date"));
     assert_eq!(
         errors.purchase_price.as_deref(),
-        Some("at most 2 decimal places")
+        Some("At most 2 decimal places")
     );
     assert_eq!(
         errors.fine_weight.as_deref(),
-        Some("at most 4 decimal places")
+        Some("At most 4 decimal places")
     );
 
     let old = parse_form(&form("1899-12-31", "1", "1", "", ""), d(TODAY)).unwrap_err();
-    assert_eq!(old.purchased_on.as_deref(), Some("too far in the past"));
+    assert_eq!(old.purchased_on.as_deref(), Some("Too far in the past"));
     let empty = parse_form(&form("", "", "", "", ""), d(TODAY)).unwrap_err();
-    assert_eq!(empty.purchase_price.as_deref(), Some("required"));
+    assert_eq!(empty.purchase_price.as_deref(), Some("Required"));
+    let words = parse_form(&form(TODAY, "1", "abc", "", ""), d(TODAY)).unwrap_err();
+    assert_eq!(
+        words.fine_weight.as_deref(),
+        Some("Enter a weight like 3,11")
+    );
 }
 
 #[tokio::test]
@@ -182,9 +202,22 @@ async fn empty_page_has_form_with_default_weight() {
     let (status, body, _) = send(&router, get("/gold")).await;
 
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("<h1>Gold coins</h1>"));
-    assert!(body.contains(r#"name="fine_weight" inputmode="decimal" value="3.11""#));
-    assert!(body.contains("No coins yet."));
+    assert!(body.contains("<title>Gold · Portfel</title>"), "{body}");
+    assert!(
+        body.contains(r#"<a href="/gold" aria-current="page""#),
+        "{body}"
+    );
+    // Bought today and the 1/10 oz weight, written the Polish way.
+    assert!(body.contains(r#"name="purchased_on" type="date" value="2026-10-15""#));
+    assert!(
+        body.contains("name=\"fine_weight\" type=\"text\" inputmode=\"decimal\" value=\"3,11\"")
+    );
+    assert!(body.contains("No coins yet — add your first one below."));
+    // No coins: nothing paid, no P&L, and gold is not paused in this config.
+    assert!(body.contains("0 coins · 0,0\u{a0}oz"), "{body}");
+    assert!(!body.contains("Purchases paused"));
+    // Nothing listens for NBP: the page says there is no price and still renders.
+    assert!(body.contains("No NBP gold price right now"), "{body}");
     assert!(body.contains("htmx.org@2.0.4"));
 }
 
@@ -204,8 +237,10 @@ async fn plain_post_adds_coin_and_redirects() {
     assert_eq!(coins.len(), 1);
     assert_eq!(coins[0].purchase_price_pln, dec("1234.56"));
     let (_, page, _) = send(&router, get("/gold")).await;
-    assert!(page.contains(">1234.56<"));
+    assert!(page.contains(">1\u{a0}234,56\u{a0}zł<"), "{page}");
     assert!(page.contains("Krugerrand"));
+    // No NBP price and no dealer quote: no value, no P&L.
+    assert!(page.contains("1 coin · 0,1\u{a0}oz"), "{page}");
 }
 
 #[tokio::test]
@@ -219,14 +254,20 @@ async fn htmx_post_returns_panel_with_totals() {
 
     assert_eq!(status, StatusCode::OK);
     // Only the panel, not the whole page.
-    assert!(html.starts_with(r#"<section id="gold-panel">"#));
+    assert!(html.starts_with(r#"<div id="gold-panel""#), "{html}");
     assert!(!html.contains("<html"));
-    // Totals: 1234.56 + 1600 = 2834.56 PLN; 3.11 + 3.11 = 6.22 g.
-    assert!(html.contains(r#"<th class="num">2834.56</th>"#));
-    assert!(html.contains(r#"<th class="num">6.22</th>"#));
-    assert!(html.contains(">1650.00<"));
+    // Paid: 1234.56 + 1600 = 2834.56 PLN; 3.11 + 3.11 = 6.22 g = 0.2 oz. The first coin has
+    // no NBP price, so the total has no value either.
+    assert!(html.contains("2\u{a0}834,56\u{a0}zł"), "{html}");
+    assert!(html.contains("2 coins · 0,2\u{a0}oz"), "{html}");
+    // The second coin is valued at its quote: 1650 - 1600 = +50, 50 / 1600 = +3,1%.
+    assert!(html.contains("1\u{a0}650,00\u{a0}zł<div"), "{html}");
+    assert!(
+        html.contains("▲ +50,00\u{a0}zł<div style=\"font-size: 12px\">+3,1%"),
+        "{html}"
+    );
     // The form is reset after a successful add.
-    assert!(html.contains(r#"name="purchase_price" inputmode="decimal" value="""#));
+    assert!(html.contains(r#"name="purchase_price" type="text" inputmode="decimal" placeholder="2 050,00" value="""#), "{html}");
 }
 
 #[tokio::test]
@@ -242,9 +283,12 @@ async fn invalid_post_shows_errors_and_keeps_input() {
     // htmx only swaps 2xx responses, so the panel with errors comes back as 200.
     assert_eq!(htmx_status, StatusCode::OK);
     for body in [&plain_body, &htmx_body] {
-        assert!(body.contains("cannot be in the future"));
-        assert!(body.contains("enter a number like 1234.56"));
-        assert!(body.contains(r#"value="abc""#));
+        assert!(body.contains("Cannot be in the future"));
+        assert!(body.contains("Enter an amount like 2 050,00"));
+        assert!(
+            body.contains(r#"value="abc" aria-invalid="true" aria-describedby="coin-price-msg""#),
+            "{body}"
+        );
     }
     assert!(list_coins(&pool).await.unwrap().is_empty());
 }
@@ -270,7 +314,7 @@ async fn delete_removes_coin_or_404s() {
 
     let (status, body, _) = send(&router, post(&uri, "", true)).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("No coins yet."));
+    assert!(body.contains("No coins yet"));
     assert!(list_coins(&pool).await.unwrap().is_empty());
 
     let (missing, _, _) = send(&router, post(&uri, "", false)).await;

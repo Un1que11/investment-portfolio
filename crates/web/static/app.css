@@ -53,20 +53,6 @@
 .tbl tr.muted{color:var(--text-3)}
 .tbl .num{text-align:right}
 
-/* Pages not restyled yet (Gold until P29): readable inside the new shell. */
-.legacy h1{margin:0;font-size:15px;font-weight:500;color:var(--text-2)}
-.legacy table{width:100%;border-collapse:collapse;font-size:13px;margin-top:16px}
-.legacy th,.legacy td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line)}
-.legacy th{font-weight:400;color:var(--text-3)}
-.legacy .num{text-align:right}
-.legacy form.add{display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:12px;align-items:end;margin-top:16px}
-.legacy label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--text-3)}
-.legacy input{height:44px;box-sizing:border-box;padding:0 12px;border:1px solid var(--line-2);border-radius:9px;background:var(--surface);color:var(--text);font:inherit;font-size:14px;color-scheme:light dark}
-.legacy button{height:44px;padding:0 16px;border:1px solid var(--line);border-radius:9px;background:transparent;color:var(--text)}
-.legacy form.add button{border:0;background:var(--text);color:var(--bg);font-weight:500}
-.legacy .error{font-size:12px;color:var(--loss)}
-.legacy .muted{color:var(--text-3)}
-
 /* Overview period switch: links rather than buttons, so each period has its own URL. */
 .seg a{min-width:44px;height:30px;padding:0 12px;box-sizing:border-box;border-radius:7px;font-size:13px;font-weight:500;color:var(--text-2);display:inline-flex;align-items:center;justify-content:center}
 .seg a:hover{color:var(--text)}

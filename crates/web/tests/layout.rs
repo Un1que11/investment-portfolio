@@ -2,11 +2,12 @@
 
 use std::sync::Arc;
 
-use axum::Router;
 use axum::body::Body;
 use axum::http::{HeaderMap, Request, StatusCode, header};
+use axum::{Extension, Router};
 use chrono::{NaiveDate, Utc};
 use http_body_util::BodyExt;
+use portfolio_core::config::Config;
 use portfolio_db::open_in_memory;
 use portfolio_sources::kraken::KrakenClient;
 use portfolio_sources::nbp::NbpClient;
@@ -16,19 +17,38 @@ use tower::ServiceExt;
 
 async fn setup() -> Router {
     let pool = open_in_memory().await.unwrap();
-    // No page here asks a price source: nothing listens on the discard port.
+    // Nothing listens on the discard port: every price is missing.
     let market = Market {
         nbp: NbpClient::with_base_url("http://127.0.0.1:9").unwrap(),
         kraken: KrakenClient::with_base_url("http://127.0.0.1:9").unwrap(),
         alphavantage: None,
         gold_buyback_factor: Decimal::ONE,
     };
+    let config = Config::from_toml(
+        r#"
+        [targets]
+        vwce = 55
+        crypto = 25
+        gold = 20
+        [targets.crypto_split]
+        btc = 75
+        eth = 25
+        [ikze.limits]
+        2026 = "11304.00"
+        [tax]
+        rate_percent = 12
+        [gold]
+        buyback_factor = "1"
+        "#,
+    )
+    .unwrap();
     app(AppState {
         pool,
         market: Arc::new(market),
         today: Arc::new(|| NaiveDate::from_ymd_opt(2026, 10, 16).unwrap()),
         now: Arc::new(Utc::now),
     })
+    .layer(Extension(Arc::new(config)))
 }
 
 async fn send(router: &Router, request: Request<Body>) -> (StatusCode, HeaderMap, String) {
@@ -79,7 +99,7 @@ async fn pages_use_the_shell_and_follow_the_system_theme_without_a_cookie() {
     assert!(body.contains(r#"name="theme" value="dark""#), "{body}");
     assert!(body.contains("Dark theme"), "{body}");
     // The gold page itself is still there.
-    assert!(body.contains("Gold coins"), "{body}");
+    assert!(body.contains(r#"<h2 id="coins-h""#), "{body}");
 }
 
 #[tokio::test]
