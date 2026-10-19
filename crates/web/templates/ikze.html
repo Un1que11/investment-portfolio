@@ -50,9 +50,7 @@
 <div style="font-size: 14px; font-weight: 500">{{ r.title }}</div>
 <div style="font-size: 13px; color: var(--text-2); line-height: 1.45">{{ r.text }}</div>
 </div>
-{%- if let Some(href) = r.plan_href %}
-<a href="{{ href }}" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 9px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 500; border: 1px solid var(--line)">Plan a top-up</a>
-{%- endif %}
+<a href="{{ r.plan_href }}" style="display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 9px; background: var(--surface); color: var(--text); font-size: 13px; font-weight: 500; border: 1px solid var(--line)">Plan a top-up</a>
 </section>
 {%- endif %}
 

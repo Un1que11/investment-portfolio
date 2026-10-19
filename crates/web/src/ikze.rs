@@ -134,8 +134,8 @@ pub struct Banner {
     /// "Top up before 31 Dec · 76 days left".
     pub title: String,
     pub text: String,
-    /// "Plan a top-up" goes to the Allocation page once it is built (P22).
-    pub plan_href: Option<&'static str>,
+    /// "Plan a top-up": the Allocation page's plan for one suggested top-up.
+    pub plan_href: String,
 }
 
 /// "November and December", "October, November and December", or "one a month from March to
@@ -196,7 +196,7 @@ impl Banner {
         Banner {
             title,
             text: format!("{pace} {split}"),
-            plan_href: Page::Allocation.built().then_some(Page::Allocation.path()),
+            plan_href: format!("{}?amount={}", Page::Allocation.path(), r.each.normalize()),
         }
     }
 }
@@ -521,8 +521,8 @@ mod tests {
             "At 942,00 zł a month you’ll reach 7 536,00 zł. Two top-ups of 2 826,00 zł in \
              November and December fill the limit."
         );
-        // Allocation (P22) is not built yet, so there is no button to it.
-        assert_eq!(b.plan_href, None);
+        // "Plan a top-up" opens the plan for one of the two top-ups.
+        assert_eq!(b.plan_href, "/allocation?amount=2826");
     }
 
     #[test]

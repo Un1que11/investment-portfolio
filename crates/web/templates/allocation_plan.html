@@ -1,0 +1,57 @@
+{#- The top-up plan card (design/reference/04-allocation.html). The amount and the checkbox swap
+    #plan-result through htmx, the chips the whole card; without htmx the form and the chips
+    load the page. -#}
+<section id="topup" aria-labelledby="calc-h" style="flex: 1 1 340px; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 20px; box-shadow: var(--shadow)">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h2 id="calc-h" style="margin: 0; font-size: 15px; font-weight: 600">Top-up plan</h2>
+<p style="margin: 0; font-size: 13px; color: var(--text-3); line-height: 1.45">Moves toward targets with new money only.</p>
+</div>
+<form action="/allocation" method="get" hx-get="/allocation" hx-trigger="submit" hx-target="#plan-result" hx-select="#plan-result" hx-swap="outerHTML" hx-replace-url="true" style="display: flex; flex-direction: column; gap: 20px; margin: 0">
+<div style="display: flex; flex-direction: column; gap: 8px">
+<label for="amt" style="font-size: 13px; color: var(--text-2)">I have</label>
+<div class="amt" style="display: flex; align-items: center; height: 52px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--bg); padding: 0 14px; gap: 8px">
+<input id="amt" name="amount" type="text" inputmode="decimal" autocomplete="off" value="{{ amount }}" hx-get="/allocation" hx-trigger="input changed delay:400ms" hx-include="closest form" style="flex: 1 1 auto; min-width: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 22px; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums">
+<span style="color: var(--text-3); font-size: 15px">zł</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+{%- for c in chips %}
+<a class="ghost" href="{{ c.href }}" hx-get="{{ c.hx_get }}" hx-include="#paused" hx-target="#topup" hx-select="#topup" hx-swap="outerHTML" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px">{{ c.label }}</a>
+{%- endfor %}
+</div>
+</div>
+<label style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); cursor: pointer"><input id="paused" type="checkbox" name="paused" value="on"{% if include_paused %} checked{% endif %} hx-get="/allocation" hx-trigger="change" hx-include="closest form" style="width: 16px; height: 16px; margin: 0; accent-color: var(--accent)">Include paused assets</label>
+<noscript><button type="submit" style="height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px">Plan</button></noscript>
+</form>
+
+<div id="plan-result" aria-live="polite" style="display: flex; flex-direction: column; gap: 20px">
+{%- match result %}
+{%- when Err(error) %}
+<p role="alert" style="margin: 0; font-size: 13px; color: var(--loss)">{{ error }}</p>
+{%- when Ok(p) %}
+<div style="display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--line)">
+{%- for r in p.rows %}
+<div style="display: flex; flex-direction: column; gap: 4px; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 14px{% if !r.bought %}; color: var(--text-3){% endif %}">
+<div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px">
+<span style="display: flex; align-items: center; gap: 8px; font-weight: 500"><span style="width: 10px; height: 10px; border-radius: 3px; background: {{ r.color }}{% if !r.bought %}; opacity: .45{% endif %}"></span>{{ r.name }}</span>
+<span style="font-weight: 500; color: {% if r.bought %}var(--text){% else %}var(--text-3){% endif %}">{{ r.amount }}</span>
+</div>
+<div style="display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--text-3); padding-left: 18px"><span>{{ r.note }}</span><span>{{ r.weight }}</span></div>
+</div>
+{%- endfor %}
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; color: var(--text-3)">After this top-up</div>
+<div role="img" aria-label="{{ p.after_label }}" style="display: flex; gap: 3px; height: 8px">
+{%- for s in p.after %}
+<div style="width: {{ s.width }}; background: {{ s.color }}; border-radius: {{ s.radius }}"></div>
+{%- endfor %}
+</div>
+<div style="font-size: 12px; color: var(--text-2)">{{ p.after_label }}</div>
+</div>
+{%- if let Some(n) = p.ikze %}
+<div style="font-size: 12px; line-height: 1.45; padding: 10px 12px; border-radius: 8px; {% if n.warn %}background: var(--warn-soft); color: var(--warn){% else %}background: var(--surface-2); color: var(--text-2){% endif %}">{{ n.text }}</div>
+{%- endif %}
+{%- endmatch %}
+</div>
+</section>

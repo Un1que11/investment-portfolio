@@ -71,8 +71,9 @@ async fn pages_use_the_shell_and_follow_the_system_theme_without_a_cookie() {
         body.contains(r#"<a href="/gold" aria-current="page""#),
         "{body}"
     );
-    assert!(!body.contains(r#"href="/allocation""#), "{body}");
-    assert!(body.contains("Allocation</span>"), "{body}");
+    assert!(!body.contains(r#"href="/import""#), "{body}");
+    assert!(body.contains("Import</span>"), "{body}");
+    assert!(body.contains(r#"href="/allocation""#), "{body}");
     // No price has been fetched into the empty database.
     assert!(body.contains("No prices yet"), "{body}");
     assert!(body.contains(r#"name="theme" value="dark""#), "{body}");
