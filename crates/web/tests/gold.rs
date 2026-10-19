@@ -260,3 +260,48 @@ async fn a_bad_field_is_marked_and_explained() {
     );
     assert!(panel.contains("No coins yet"), "{panel}");
 }
+
+#[tokio::test]
+async fn a_huge_amount_or_weight_is_turned_down_instead_of_breaking_the_page() {
+    // A weight of 10^27 g x 400 zł/g is past Decimal's ~7,9 x 10^28, and two coins at 5 x 10^28
+    // zł each overflow the "Paid" tile: once stored, either would panic every later /gold.
+    let pool = open_in_memory().await.unwrap();
+    gold_price(&pool).await;
+    let router = router(pool, config(""));
+    for (form, field, error) in [
+        (
+            "purchase_price=1000&fine_weight=1000000000000000000000000000",
+            "coin-weight-msg",
+            "Enter at most 100 000 g",
+        ),
+        (
+            "purchase_price=50000000000000000000000000000&fine_weight=3,11",
+            "coin-price-msg",
+            "Enter at most 1 000 000 000 zł",
+        ),
+        (
+            "purchase_price=1000&fine_weight=3,11&manual_quote=50000000000000000000000000000",
+            "coin-quote-msg",
+            "Enter at most 1 000 000 000 zł",
+        ),
+    ] {
+        let body = format!("label=&purchased_on=2026-10-01&{form}");
+        let panel = send(&router, htmx_post("/gold/coins", &body)).await;
+        let msg = format!(r#"<span id="{field}" class="field-error">{error}</span>"#);
+        assert!(panel.contains(&msg), "{msg}\n{panel}");
+        assert!(panel.contains("No coins yet"), "{panel}");
+    }
+    let page = send(&router, get("/gold")).await;
+    assert!(page.contains("No coins yet"), "{page}");
+
+    // The caps themselves are still taken: 100 000 g x 400 x 0,95 = 38 000 000 zł.
+    let panel = send(
+        &router,
+        htmx_post(
+            "/gold/coins",
+            "label=&purchased_on=2026-10-01&purchase_price=1000000000&fine_weight=100000&manual_quote=",
+        ),
+    )
+    .await;
+    assert!(panel.contains(">38 000 000,00 zł<"), "{panel}");
+}
