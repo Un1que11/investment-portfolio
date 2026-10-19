@@ -66,11 +66,23 @@ pub struct FieldErrors {
 
 /// The components sheet's error for an amount that is no number.
 const AMOUNT_LIKE: &str = "Enter an amount like 2 050,00";
+/// The most a price or quote may be, as on Allocation: far above any coin, and small enough that
+/// the tiles' sums stay inside `Decimal` (two coins at 5 x 10^28 zł would overflow "Paid").
+const MAX_PLN: Decimal = crate::allocation::MAX_AMOUNT;
+/// The heaviest coin or bar, in grams: 100 kg. Weight x the NBP price per gram must stay inside
+/// `Decimal` (10^27 g x 400 zł/g overflows it).
+const MAX_GRAMS: Decimal = Decimal::from_parts(100_000, 0, 0, false, 0);
 
 /// Parses an amount typed by hand: spaces (also non-breaking) are ignored and a decimal comma
 /// is accepted, so "1 234,56" and "1234.56" are the same. Must be positive, with at most
-/// `max_decimals` decimal places. `not_a_number` is the error for text that is no number.
-fn parse_amount(raw: &str, max_decimals: u32, not_a_number: &str) -> Result<Decimal, String> {
+/// `max_decimals` decimal places and at most `max` ("Enter at most 100 000 g", in `unit`).
+/// `not_a_number` is the error for text that is no number.
+fn parse_amount(
+    raw: &str,
+    max_decimals: u32,
+    (max, unit): (Decimal, &str),
+    not_a_number: &str,
+) -> Result<Decimal, String> {
     let cleaned: String = raw
         .chars()
         .filter(|c| !c.is_whitespace() && *c != '\u{a0}')
@@ -92,6 +104,13 @@ fn parse_amount(raw: &str, max_decimals: u32, not_a_number: &str) -> Result<Deci
     }
     if value.scale() > max_decimals {
         return Err(format!("At most {max_decimals} decimal places"));
+    }
+    if value > max {
+        return Err(format!(
+            "Enter at most {}{}{unit}",
+            format::number(max, 0),
+            format::NBSP
+        ));
     }
     Ok(value)
 }
@@ -119,16 +138,21 @@ pub fn parse_form(form: &CoinForm, today: NaiveDate) -> Result<NewCoin, FieldErr
         }
         Ok(d) => Some(d),
     };
-    let price = parse_amount(&form.purchase_price, 2, AMOUNT_LIKE)
+    let price = parse_amount(&form.purchase_price, 2, (MAX_PLN, "zł"), AMOUNT_LIKE)
         .map_err(|e| errors.purchase_price = Some(e))
         .ok();
-    let weight = parse_amount(&form.fine_weight, 4, "Enter a weight like 3,11")
-        .map_err(|e| errors.fine_weight = Some(e))
-        .ok();
+    let weight = parse_amount(
+        &form.fine_weight,
+        4,
+        (MAX_GRAMS, "g"),
+        "Enter a weight like 3,11",
+    )
+    .map_err(|e| errors.fine_weight = Some(e))
+    .ok();
     let quote = if form.manual_quote.trim().is_empty() {
         Some(None)
     } else {
-        parse_amount(&form.manual_quote, 2, AMOUNT_LIKE)
+        parse_amount(&form.manual_quote, 2, (MAX_PLN, "zł"), AMOUNT_LIKE)
             .map(Some)
             .map_err(|e| errors.manual_quote = Some(e))
             .ok()
@@ -667,5 +691,25 @@ mod tests {
         };
         let coin = parse_form(&typed, NaiveDate::from_ymd_opt(2026, 10, 16).unwrap()).unwrap();
         assert_eq!(coin.fine_weight_g, TENTH_OUNCE_GRAMS);
+    }
+
+    #[test]
+    fn amounts_and_weights_stop_at_their_caps() {
+        let zl = (MAX_PLN, "zł");
+        assert_eq!(
+            parse_amount("1 000 000 000,00", 2, zl, AMOUNT_LIKE),
+            Ok(dec!(1000000000))
+        );
+        // One grosz over the cap.
+        assert_eq!(
+            parse_amount("1000000000,01", 2, zl, AMOUNT_LIKE).map_err(|e| plain(&e)),
+            Err("Enter at most 1 000 000 000 zł".into())
+        );
+        let g = (MAX_GRAMS, "g");
+        assert_eq!(parse_amount("100000", 4, g, ""), Ok(dec!(100000)));
+        assert_eq!(
+            parse_amount("100000,0001", 4, g, "").map_err(|e| plain(&e)),
+            Err("Enter at most 100 000 g".into())
+        );
     }
 }
