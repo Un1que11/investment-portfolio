@@ -39,6 +39,9 @@ use crate::{AppError, AppState};
 pub const CHIPS: [u32; 3] = [942, 2000, 5000];
 /// The amount the plan starts with, as in the design.
 pub const DEFAULT_AMOUNT: Decimal = Decimal::from_parts(2000, 0, 0, false, 0);
+/// The most the plan takes: far above any real top-up, and small enough that the pro rata split
+/// (amount × need) stays inside `Decimal`; 10^15 with every class bought would overflow it.
+pub const MAX_AMOUNT: Decimal = Decimal::from_parts(1_000_000_000, 0, 0, false, 0);
 /// The longest drift bar: half the track, from the middle.
 const HALF: Decimal = Decimal::from_parts(5, 0, 0, false, 1);
 
@@ -51,14 +54,21 @@ pub struct AllocationQuery {
 }
 
 /// An amount as typed into the input: spaces (also non-breaking) as thousands separators, a
-/// decimal comma or point, at most two decimals, an optional "zł". None when it is not a number.
+/// decimal comma or point, at most two decimals, an optional "zł". None when it is not a number
+/// (also "1e5", which `Decimal` would read).
 pub fn parse_amount(text: &str) -> Option<Decimal> {
     let compact: String = text
         .chars()
         .filter(|c| !c.is_whitespace() && *c != format::NBSP && *c != '\u{202f}')
         .collect();
     let number = compact.strip_suffix("zł").unwrap_or(&compact);
-    if number.is_empty() || (number.contains('.') && number.contains(',')) {
+    let digits = number.strip_prefix('-').unwrap_or(number);
+    if digits.is_empty()
+        || !digits
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == '.' || c == ',')
+        || (number.contains('.') && number.contains(','))
+    {
         return None;
     }
     let value = Decimal::from_str(&number.replace(',', ".")).ok()?;
@@ -437,9 +447,15 @@ impl PlanPanel {
     ) -> PlanPanel {
         let parsed = match asked {
             None => Ok(DEFAULT_AMOUNT),
-            Some(text) => {
-                parse_amount(text).ok_or_else(|| "Enter an amount in złoty, such as 2 000.".into())
-            }
+            Some(text) => match parse_amount(text) {
+                None => Err("Enter an amount in złoty, such as 2 000.".to_owned()),
+                Some(a) if a > MAX_AMOUNT => Err(format!(
+                    "Enter at most {}{}zł.",
+                    format::number(MAX_AMOUNT, 0),
+                    format::NBSP
+                )),
+                Some(a) => Ok(a),
+            },
         };
         let amount = match (&parsed, asked) {
             (Ok(a), _) => amount_text(*a),
@@ -663,7 +679,9 @@ mod tests {
         // Read, and turned down later as not above zero.
         assert_eq!(parse_amount("-5"), Some(dec!(-5)));
         assert_eq!(parse_amount("0"), Some(dec!(0)));
-        for bad in ["", "zł", "abc", "1,2,3", "1.000,50", "10,555"] {
+        for bad in [
+            "", "zł", "-", "abc", "1,2,3", "1.000,50", "10,555", "1e5", "+5",
+        ] {
             assert_eq!(parse_amount(bad), None, "{bad}");
         }
         assert_eq!(amount_text(dec!(2000)), "2\u{a0}000");
@@ -966,6 +984,29 @@ mod tests {
             none.result.err().as_deref(),
             Some("Every class is paused. Tick “Include paused assets” to plan anyway.")
         );
+    }
+
+    #[test]
+    fn a_huge_amount_is_turned_down_instead_of_overflowing() {
+        // With every class bought, 10^15 x VWCE's need of about 5,5 x 10^14 is past Decimal's
+        // ~7,9 x 10^28, and Decimal::MAX plus the 11 500 held overflows the base.
+        let cfg = config("crypto = true\ngold = true");
+        let values = design_values();
+        for (typed, paused) in [
+            ("1 000 000 000 000 000", true),
+            ("79228162514264337593543950335", false),
+        ] {
+            let p = PlanPanel::new(&values, &cfg, Some(typed), paused, DESIGN_CTX);
+            assert_eq!(
+                p.result.err().as_deref().map(plain),
+                Some("Enter at most 1 000 000 000 zł.".into()),
+                "{typed}"
+            );
+            assert_eq!(p.amount, typed);
+        }
+        // The cap itself is still planned.
+        let cap = PlanPanel::new(&values, &cfg, Some("1000000000"), true, DESIGN_CTX);
+        assert!(cap.result.is_ok());
     }
 
     #[test]
