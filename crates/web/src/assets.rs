@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveDateTime};
 use portfolio_core::attribution::ProfitAttribution;
 use portfolio_core::gold::TENTH_OUNCE_GRAMS;
 use portfolio_core::pnl::PortfolioPnl;
@@ -109,12 +109,16 @@ pub fn spark_values(series: Option<&Vec<(NaiveDate, Option<Decimal>)>>) -> Vec<D
 /// A share of the profit is shown only while the total P&L is a gain: over a loss, `core`'s
 /// share (the asset's P&L over the total) flips sign, so the biggest loser would get a full bar
 /// and the asset that gained a negative share.
+///
+/// `last_price` names the assets valued at a stored close while their source is down, with
+/// when that close was fetched (local time, None if unknown): their cards are marked stale.
 pub fn asset_cards(
     pnl: &PortfolioPnl,
     attribution: &ProfitAttribution,
     ledger: &[LedgerTx],
     coins: &[Coin],
     series: &BTreeMap<String, Vec<(NaiveDate, Option<Decimal>)>>,
+    last_price: &BTreeMap<String, Option<NaiveDateTime>>,
 ) -> Vec<AssetCard> {
     let has_profit = pnl.pnl_if_complete().is_some_and(|t| t > Decimal::ZERO);
     let ranked = attribution
@@ -135,14 +139,19 @@ pub fn asset_cards(
                 pnl_ratio: a.pnl_ratio(),
                 share,
             };
-            Some(AssetCard::new(
+            let mut card = AssetCard::new(
                 display_name(symbol),
                 &sub,
                 &phone_sub,
                 rank,
                 &figures,
                 &spark_values(series.get(symbol)),
-            ))
+            );
+            card.stale = last_price.get(symbol).map(|at| match at {
+                Some(t) => format!("Last price {}", format::day_time(*t)),
+                None => "Last stored price".into(),
+            });
+            Some(card)
         })
         .collect()
 }
@@ -287,7 +296,14 @@ mod tests {
             ],
         )]);
         let ledger = [buy("VWCE", Some(Wrapper::Ikze))];
-        let cards = asset_cards(&pnl, &attribution, &ledger, &[coin(1, dec!(3.11))], &series);
+        let cards = asset_cards(
+            &pnl,
+            &attribution,
+            &ledger,
+            &[coin(1, dec!(3.11))],
+            &series,
+            &BTreeMap::new(),
+        );
 
         // Gold +460, VWCE +448, Bitcoin +280, Ether +220: ranked in that order.
         let names: Vec<(&str, Option<usize>)> =
@@ -337,7 +353,14 @@ mod tests {
             .map(|(s, a)| (s.to_owned(), a))
             .collect(),
         };
-        let cards = asset_cards(&pnl, &profit_attribution(&pnl), &[], &[], &BTreeMap::new());
+        let cards = asset_cards(
+            &pnl,
+            &profit_attribution(&pnl),
+            &[],
+            &[],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
 
         let names: Vec<(&str, Option<usize>)> =
             cards.iter().map(|c| (c.name.as_str(), c.rank)).collect();
@@ -376,7 +399,14 @@ mod tests {
         };
         let attribution = profit_attribution(&pnl);
         assert_eq!(attribution.ranked[2].1.share_of_total, Some(dec!(1.5)));
-        let cards = asset_cards(&pnl, &attribution, &[], &[], &BTreeMap::new());
+        let cards = asset_cards(
+            &pnl,
+            &attribution,
+            &[],
+            &[],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
 
         let shown: Vec<(&str, &str, &str)> = cards
             .iter()
@@ -410,8 +440,42 @@ mod tests {
             .map(|(s, a)| (s.to_owned(), a))
             .collect(),
         };
-        let cards = asset_cards(&pnl, &profit_attribution(&pnl), &[], &[], &BTreeMap::new());
+        let cards = asset_cards(
+            &pnl,
+            &profit_attribution(&pnl),
+            &[],
+            &[],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
         let shares: Vec<&str> = cards.iter().map(|c| c.share.as_str()).collect();
         assert_eq!(shares, ["—", "—"]);
+    }
+    #[test]
+    fn a_card_valued_at_a_stored_close_is_marked_stale() {
+        let pnl = design();
+        let at = d("2026-10-15").and_hms_opt(22, 0, 0).unwrap();
+        let last = BTreeMap::from([("BTC".to_owned(), Some(at)), ("ETH".to_owned(), None)]);
+        let cards = asset_cards(
+            &pnl,
+            &profit_attribution(&pnl),
+            &[],
+            &[],
+            &BTreeMap::new(),
+            &last,
+        );
+        let stale: Vec<_> = cards
+            .iter()
+            .map(|c| (c.name.as_str(), c.stale.as_deref()))
+            .collect();
+        assert_eq!(
+            stale,
+            [
+                ("Gold", None),
+                ("VWCE", None),
+                ("Bitcoin", Some("Last price 15 Oct, 22:00")),
+                ("Ether", Some("Last stored price")),
+            ]
+        );
     }
 }

@@ -233,6 +233,56 @@ pub async fn close_on_day<S: DailySource>(
     }
 }
 
+/// A stored close that stands in for today's because the provider failed to give a fresh one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LastKnown {
+    /// The provider that failed (its [`DailySource::NAME`]).
+    pub provider: &'static str,
+    /// When the stored closes were last fetched; None if never recorded.
+    pub fetched_at: Option<DateTime<Utc>>,
+    /// The provider's error.
+    pub error: String,
+}
+
+/// [`close_on_day`], except that for today a provider failure falls back to the latest stored
+/// close within `MAX_GAP_DAYS`, reported as [`LastKnown`]: the portfolio keeps a value while a
+/// source is down, marked as stale. Other days, and other errors, are as in [`close_on_day`]
+/// (history is never filled with an older close).
+pub async fn close_or_last_known<S: DailySource>(
+    pool: &SqlitePool,
+    provider: &S,
+    instrument: &Instrument,
+    day: NaiveDate,
+    clock: Clock,
+) -> Result<(PriceQuote, Option<LastKnown>), PriceError> {
+    match close_on_day(pool, provider, instrument, day, clock).await {
+        Ok(quote) => Ok((quote, None)),
+        Err(PriceError::Provider(e)) if day == clock.today => {
+            let asset_id = cache::ensure_asset(
+                pool,
+                instrument.symbol,
+                instrument.name,
+                instrument.class,
+                instrument.currency,
+            )
+            .await?;
+            match cached_close(pool, asset_id, day).await? {
+                Some(quote) => {
+                    let fetched_at = cache::last_fetched_at(pool, asset_id, S::NAME).await?;
+                    let last = LastKnown {
+                        provider: S::NAME,
+                        fetched_at,
+                        error: e.to_string(),
+                    };
+                    Ok((quote, Some(last)))
+                }
+                None => Err(PriceError::Provider(e)),
+            }
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// Fetches and caches the provider's recent daily series unless it was fetched within the
 /// provider's `MIN_REFETCH_INTERVAL`.
 async fn refresh_daily<S: DailySource>(
@@ -346,6 +396,29 @@ pub async fn value_in_pln<S: DailySource>(
     clock: Clock,
 ) -> Result<Valuation, PriceError> {
     let quote = close_on_day(pool, provider, instrument, day, clock).await?;
+    quote_in_pln(pool, nbp, quote, clock).await
+}
+
+/// [`value_in_pln`] on [`close_or_last_known`]: today's value from the last stored close while
+/// the provider is down. The NBP rate is still the close's own day's.
+pub async fn value_in_pln_or_last_known<S: DailySource>(
+    pool: &SqlitePool,
+    provider: &S,
+    nbp: &NbpClient,
+    instrument: &Instrument,
+    day: NaiveDate,
+    clock: Clock,
+) -> Result<(Valuation, Option<LastKnown>), PriceError> {
+    let (quote, last) = close_or_last_known(pool, provider, instrument, day, clock).await?;
+    Ok((quote_in_pln(pool, nbp, quote, clock).await?, last))
+}
+
+async fn quote_in_pln(
+    pool: &SqlitePool,
+    nbp: &NbpClient,
+    quote: PriceQuote,
+    clock: Clock,
+) -> Result<Valuation, PriceError> {
     if quote.currency.eq_ignore_ascii_case("PLN") {
         return Ok(Valuation {
             close_pln: quote.close,

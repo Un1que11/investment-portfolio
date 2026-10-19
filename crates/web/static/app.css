@@ -84,3 +84,23 @@
 
 /* Import review: "Show already imported" unticked hides those rows, with no round trip. */
 .import-review:has(#show-dup:not(:checked)) tr.dup{display:none}
+
+/* States (screens/08). Skeleton blocks pulse and the "updating" spinner turns, unless the
+   system asks for less motion. */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.sk{animation:pulse 1.6s ease-in-out infinite}
+.spin{animation:spin .9s linear infinite;transform-origin:50% 50%}
+@media (prefers-reduced-motion:reduce){.sk,.spin{animation:none}}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* The sync status says "Updating prices…" while htmx is fetching (hx-indicator=".sync"). */
+.sync-busy{display:none}
+.sync.htmx-request .sync-busy{display:flex}
+.sync.htmx-request .sync-now{display:none!important}
+
+/* The Overview panel's loading skeleton covers it while htmx re-renders it. It shows only
+   after 250 ms, so a quick answer from the caches does not flash it. */
+#overview{position:relative}
+.ov-skel{position:absolute;inset:0;z-index:2;visibility:hidden;opacity:0}
+#overview.htmx-request>.ov-skel{visibility:visible;opacity:1;transition:opacity .15s .25s,visibility 0s .25s}

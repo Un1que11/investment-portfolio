@@ -6,6 +6,8 @@
 //! ([`crate::assets`]) cover all time, so the switch leaves them alone and only full page loads
 //! build them.
 
+use std::collections::BTreeMap;
+
 use askama::Template;
 use axum::extract::{Query, State};
 use axum::http::HeaderMap;
@@ -17,12 +19,13 @@ use portfolio_db::gold::list_coins;
 use portfolio_db::transactions::load_ledger;
 use portfolio_sources::history::{PeriodChart, period_chart, value_series};
 use portfolio_sources::periods::period_views;
+use portfolio_sources::prices::LastKnown;
 use portfolio_sources::valuation::{PortfolioReport, fetch_inputs, report, requirements};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
 use crate::assets::asset_cards;
-use crate::base::{AssetCard, Page, Shell};
+use crate::base::{AssetCard, Page, Shell, local};
 use crate::chart::{self, Chart};
 use crate::format::{self, Delta};
 use crate::{AppError, AppState};
@@ -152,7 +155,23 @@ pub struct OverviewPanel {
     pub contributed_note: String,
     pub bench_note: String,
     pub chart: Option<Chart>,
+    /// The chart's "not enough history" state instead of a chart.
+    pub one_point: Option<&'static str>,
     pub chart_label: String,
+}
+
+/// The chart's "not enough history" state (`screens/08`): exactly one of its days has a value,
+/// so there is no line to draw yet.
+pub fn one_point_note(points: &[chart::Point]) -> Option<&'static str> {
+    if points.iter().filter(|p| p.value.is_some()).count() != 1 {
+        return None;
+    }
+    Some(if points.len() == 1 {
+        // The first contribution is today: tomorrow adds the second day.
+        "One data point so far. The chart fills in from tomorrow."
+    } else {
+        "One data point so far. The chart fills in once more days have prices."
+    })
 }
 
 impl OverviewPanel {
@@ -175,6 +194,7 @@ impl OverviewPanel {
                 benchmark: p.benchmark,
             })
             .collect();
+        let one_point = one_point_note(&points);
         OverviewPanel {
             periods: Period::ALL
                 .into_iter()
@@ -194,7 +214,11 @@ impl OverviewPanel {
             contributed: format::pln(view.contributions),
             contributed_note: format!("net, {caption}"),
             bench_note: benchmark_note(view, bench),
-            chart: chart::chart(&points, bench, period == Period::All),
+            chart: match one_point {
+                Some(_) => None,
+                None => chart::chart(&points, bench, period == Period::All),
+            },
+            one_point,
             chart_label: format!(
                 "Portfolio value {} against {} contributed, {caption}",
                 format::pln(report.valuation.total),
@@ -228,14 +252,44 @@ pub struct OverviewError {
     pub error: String,
 }
 
+/// The panel's place before anything is imported or added (`screens/08`, "Overview · no data
+/// yet").
+#[derive(Template)]
+#[template(path = "overview_empty.html")]
+pub struct OverviewEmpty;
+
+/// What takes the panel's place.
+enum Panel {
+    Ready(Box<OverviewPanel>),
+    /// Nothing in the ledger yet.
+    Empty,
+    /// The portfolio cannot be valued (a contribution's rate is missing).
+    Error(String),
+}
+
+impl Panel {
+    fn render(&self) -> askama::Result<String> {
+        match self {
+            Panel::Ready(p) => p.render(),
+            Panel::Empty => OverviewEmpty.render(),
+            Panel::Error(error) => OverviewError {
+                error: error.clone(),
+            }
+            .render(),
+        }
+    }
+}
+
 fn is_htmx(headers: &HeaderMap) -> bool {
     headers.get("hx-request").is_some_and(|v| v == "true")
 }
 
 struct Built {
-    /// The panel, or why there is none (a contribution's rate is missing).
-    panel: Result<OverviewPanel, String>,
+    panel: Panel,
     assets: Vec<AssetCard>,
+    /// The assets valued at a stored close while their source is down, and whether every
+    /// asset has a price: what the shell's banner and sync status say. None without a report.
+    prices: Option<(BTreeMap<String, LastKnown>, bool)>,
 }
 
 /// The panel for today and, when `with_assets`, the asset cards.
@@ -248,6 +302,13 @@ async fn build(
     let s = state.sources();
     let today = s.clock.today;
     let ledger = load_ledger(&state.pool).await?;
+    if ledger.is_empty() {
+        return Ok(Built {
+            panel: Panel::Empty,
+            assets: Vec::new(),
+            prices: None,
+        });
+    }
     let inputs = fetch_inputs(&requirements(&ledger, today), today, &s).await;
     let report = match report(&ledger, today, &inputs) {
         Ok(r) => r,
@@ -256,8 +317,9 @@ async fn build(
                 eprintln!("overview: {p}");
             }
             return Ok(Built {
-                panel: Err(format!("The portfolio cannot be valued: {e}")),
+                panel: Panel::Error(format!("The portfolio cannot be valued: {e}")),
                 assets: Vec::new(),
+                prices: None,
             });
         }
     };
@@ -280,7 +342,19 @@ async fn build(
             }
         };
         let coins = list_coins(&state.pool).await?;
-        asset_cards(&report.pnl, &report.attribution, &ledger, &coins, &all_time)
+        let last_price = report
+            .last_known
+            .iter()
+            .map(|(asset, l)| (asset.clone(), l.fetched_at.map(local)))
+            .collect();
+        asset_cards(
+            &report.pnl,
+            &report.attribution,
+            &ledger,
+            &coins,
+            &all_time,
+            &last_price,
+        )
     } else {
         Vec::new()
     };
@@ -295,8 +369,9 @@ async fn build(
     }
     let view = periods.view(period).expect("period_views has every period");
     Ok(Built {
-        panel: Ok(OverviewPanel::new(&report, view, &series, bench)),
+        panel: Panel::Ready(Box::new(OverviewPanel::new(&report, view, &series, bench))),
         assets,
+        prices: Some((report.last_known.clone(), report.pnl.complete)),
     })
 }
 
@@ -309,14 +384,14 @@ pub async fn show(
     let bench = q.bench.as_deref() != Some("off");
     let htmx = is_htmx(&headers);
     let built = build(&state, period, bench, !htmx).await?;
-    let panel = match built.panel {
-        Ok(p) => p.render()?,
-        Err(error) => OverviewError { error }.render()?,
-    };
+    let panel = built.panel.render()?;
     if htmx {
         return Ok(Html(panel).into_response());
     }
-    let shell = Shell::load(&state, &headers, Page::Overview).await?;
+    let mut shell = Shell::load(&state, &headers, Page::Overview).await?;
+    if let Some((last_known, complete)) = &built.prices {
+        shell = shell.with_prices(last_known, *complete, href(period, bench));
+    }
     let page = OverviewPage {
         shell,
         panel,
@@ -345,6 +420,37 @@ mod tests {
         assert_eq!(href(Period::All, false), "/?bench=off");
         assert_eq!(href(Period::OneYear, true), "/?period=1Y");
         assert_eq!(href(Period::OneMonth, false), "/?period=1M&bench=off");
+    }
+
+    #[test]
+    fn one_valued_day_is_the_not_enough_history_state() {
+        let point = |day: &str, value: Option<Decimal>| chart::Point {
+            date: d(day),
+            value,
+            contributions: Some(dec!(500)),
+            benchmark: None,
+        };
+        // The first contribution today: one day, valued.
+        assert_eq!(
+            one_point_note(&[point("2026-10-17", Some(dec!(500)))]),
+            Some("One data point so far. The chart fills in from tomorrow.")
+        );
+        // Two days, one without a price.
+        assert_eq!(
+            one_point_note(&[
+                point("2026-10-16", None),
+                point("2026-10-17", Some(dec!(510)))
+            ]),
+            Some("One data point so far. The chart fills in once more days have prices.")
+        );
+        // Two valued days are a line; none valued is no chart at all.
+        let two = [
+            point("2026-10-16", Some(dec!(500))),
+            point("2026-10-17", Some(dec!(510))),
+        ];
+        assert_eq!(one_point_note(&two), None);
+        assert_eq!(one_point_note(&[point("2026-10-17", None)]), None);
+        assert_eq!(one_point_note(&[]), None);
     }
 
     #[test]

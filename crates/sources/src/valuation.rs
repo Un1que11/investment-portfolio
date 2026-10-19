@@ -15,6 +15,7 @@ use portfolio_core::allocation::{Allocation, AllocationError, Sleeve, allocation
 use portfolio_core::attribution::{ProfitAttribution, profit_attribution};
 use portfolio_core::benchmark::{Benchmark, BenchmarkError, price_days, vwce_benchmark};
 use portfolio_core::config::Config;
+use portfolio_core::gold::value_coin;
 use portfolio_core::ikze::{IkzeError, IkzeFlows, IkzeYear, ikze_flows, ikze_year};
 use portfolio_core::pnl::{PortfolioPnl, asset_flows, portfolio_pnl};
 use portfolio_core::portfolio::{
@@ -29,10 +30,13 @@ use sqlx::SqlitePool;
 
 use crate::alphavantage::AlphaVantageClient;
 use crate::fx::rate_on_day;
-use crate::gold::coin_value_on_day;
+use crate::gold::GOLD_GRAM;
 use crate::kraken::KrakenClient;
 use crate::nbp::NbpClient;
-use crate::prices::{BTC, Clock, ETH, Instrument, PriceError, VWCE, backfill_weekly, value_in_pln};
+use crate::prices::{
+    BTC, Clock, ETH, Instrument, LastKnown, PriceError, VWCE, backfill_weekly, close_or_last_known,
+    value_in_pln_or_last_known,
+};
 
 /// Asset symbol of physical gold coins (valued coin by coin).
 pub const GOLD_COINS: &str = portfolio_db::gold::ASSET_SYMBOL;
@@ -93,6 +97,9 @@ pub struct Inputs {
     pub flow_rates: BTreeMap<(String, NaiveDate), Option<Decimal>>,
     /// Day -> PLN per VWCE unit, for the benchmark.
     pub vwce_prices: BTreeMap<NaiveDate, Option<Decimal>>,
+    /// Assets valued at a stored close because their provider failed today (asset -> what
+    /// stands in), see [`crate::prices::close_or_last_known`].
+    pub last_known: BTreeMap<String, LastKnown>,
     /// Why values are missing, for the report.
     pub problems: Vec<String>,
 }
@@ -114,6 +121,8 @@ pub struct PortfolioReport {
     pub contribution_flows: Vec<CashFlow>,
     /// The same contributions, each put into VWCE on its own date.
     pub benchmark: Result<Benchmark, BenchmarkError>,
+    /// Assets valued at a stored close while their provider is down ([`Inputs::last_known`]).
+    pub last_known: BTreeMap<String, LastKnown>,
     pub problems: Vec<String>,
 }
 
@@ -193,6 +202,7 @@ pub fn report(
         ikze_flows,
         contribution_flows,
         benchmark,
+        last_known: inputs.last_known.clone(),
         problems: inputs.problems.clone(),
     })
 }
@@ -216,27 +226,38 @@ pub async fn fetch_inputs(req: &Requirements, date: NaiveDate, s: &Sources<'_>) 
     let mut inputs = Inputs::default();
 
     for (asset, quantity) in &req.assets {
-        let result: Result<Decimal, String> = if asset == GOLD_COINS {
+        let result: Result<(Decimal, Option<LastKnown>), String> = if asset == GOLD_COINS {
             gold_value(date, s).await
         } else {
             let unit_price = match instrument(asset) {
                 Some(i) if i.provider == "alphavantage" => match s.alphavantage {
-                    Some(av) => value_in_pln(s.pool, av, s.nbp, &i, date, s.clock)
+                    Some(av) => value_in_pln_or_last_known(s.pool, av, s.nbp, &i, date, s.clock)
                         .await
-                        .map(|v| v.close_pln)
                         .map_err(|e| e.to_string()),
                     None => Err("no Alpha Vantage key".into()),
                 },
-                Some(i) => value_in_pln(s.pool, s.kraken, s.nbp, &i, date, s.clock)
+                Some(i) => value_in_pln_or_last_known(s.pool, s.kraken, s.nbp, &i, date, s.clock)
                     .await
-                    .map(|v| v.close_pln)
                     .map_err(|e| e.to_string()),
                 None => Err("no price source for this asset".into()),
             };
-            unit_price.map(|p| p * quantity)
+            unit_price.and_then(|(v, last)| {
+                let value = v
+                    .close_pln
+                    .checked_mul(*quantity)
+                    .ok_or("position value is too large to compute")?;
+                Ok((value, last))
+            })
         };
         match result {
-            Ok(v) => {
+            Ok((v, last)) => {
+                if let Some(last) = last {
+                    inputs.problems.push(format!(
+                        "{asset}: {}, so the last stored close is used: {}",
+                        last.provider, last.error
+                    ));
+                    inputs.last_known.insert(asset.clone(), last);
+                }
                 inputs.position_values.insert(asset.clone(), Some(v));
             }
             Err(e) => {
@@ -294,15 +315,14 @@ pub(crate) async fn vwce_prices(
         prices.extend(days.iter().map(|d| (*d, None)));
         return (prices, None);
     };
-    let price = |day: NaiveDate| value_in_pln(s.pool, av, s.nbp, &VWCE, day, s.clock);
     let mut errors: BTreeMap<NaiveDate, String> = BTreeMap::new();
     let mut provider_failed = false;
     let mut before_cache = Vec::new();
     for day in days {
         let mut close = None;
         if !provider_failed {
-            match price(*day).await {
-                Ok(v) => close = Some(v.close_pln),
+            match vwce_in_pln(s, av, *day).await {
+                Ok(v) => close = Some(v),
                 Err(e) => {
                     provider_failed = matches!(e, PriceError::Provider(_));
                     if matches!(e, PriceError::NoPrice(..)) {
@@ -319,9 +339,9 @@ pub(crate) async fn vwce_prices(
         match backfill_weekly(s.pool, av, &VWCE, s.clock).await {
             Ok(_) => {
                 for day in before_cache {
-                    match price(day).await {
+                    match vwce_in_pln(s, av, day).await {
                         Ok(v) => {
-                            prices.insert(day, Some(v.close_pln));
+                            prices.insert(day, Some(v));
                             errors.remove(&day);
                         }
                         Err(e) => {
@@ -344,28 +364,50 @@ pub(crate) async fn vwce_prices(
     (prices, problem)
 }
 
-async fn gold_value(date: NaiveDate, s: &Sources<'_>) -> Result<Decimal, String> {
-    let held = coins::list_coins(s.pool)
+/// The coins held on `date`, each valued at the NBP price per gram (or its own quote). While
+/// NBP is down, today's value uses the last stored gold price ([`close_or_last_known`]).
+/// VWCE in PLN on `day`. Today falls back to the last stored close while Alpha Vantage is
+/// down, as the positions do.
+async fn vwce_in_pln(
+    s: &Sources<'_>,
+    av: &AlphaVantageClient,
+    day: NaiveDate,
+) -> Result<Decimal, PriceError> {
+    value_in_pln_or_last_known(s.pool, av, s.nbp, &VWCE, day, s.clock)
+        .await
+        .map(|(v, _)| v.close_pln)
+}
+
+async fn gold_value(
+    date: NaiveDate,
+    s: &Sources<'_>,
+) -> Result<(Decimal, Option<LastKnown>), String> {
+    let held: Vec<_> = coins::list_coins(s.pool)
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter(|c| c.purchased_on <= date);
+        .filter(|c| c.purchased_on <= date)
+        .collect();
+    if held.is_empty() {
+        return Ok((Decimal::ZERO, None));
+    }
+    let (price, last) = close_or_last_known(s.pool, s.nbp, &GOLD_GRAM, date, s.clock)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut total = Decimal::ZERO;
     for coin in held {
-        let v = coin_value_on_day(
-            s.pool,
-            s.nbp,
-            date,
-            s.clock,
+        let v = value_coin(
+            price.close,
             coin.fine_weight_g,
             s.gold_buyback_factor,
             coin.manual_quote_pln,
         )
-        .await
         .map_err(|e| e.to_string())?;
-        total += v.valuation.value_pln;
+        total = total
+            .checked_add(v.value_pln)
+            .ok_or("the coins' value is too large to compute")?;
     }
-    Ok(total)
+    Ok((total, last))
 }
 
 /// The full report for `date` from the database and live sources.

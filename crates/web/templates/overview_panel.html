@@ -3,7 +3,7 @@
 {%- macro period_switch(class) %}
 <nav aria-label="Period" class="seg {{ class }}">
   {%- for p in periods %}
-  <a href="{{ p.href }}" hx-get="{{ p.href }}" hx-target="#overview" hx-swap="outerHTML" hx-push-url="true"{% if p.current %} aria-current="true"{% endif %}>{{ p.label }}</a>
+  <a href="{{ p.href }}" hx-get="{{ p.href }}" hx-target="#overview" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#overview, .sync"{% if p.current %} aria-current="true"{% endif %}>{{ p.label }}</a>
   {%- endfor %}
 </nav>
 {%- endmacro -%}
@@ -51,7 +51,7 @@
 <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; font-size: 13px; color: var(--text-2)">
 <span style="display: flex; align-items: center; gap: 8px"><span style="width: 16px; height: 2px; background: var(--accent); border-radius: 1px"></span>Portfolio value</span>
 <span style="display: flex; align-items: center; gap: 8px"><span style="width: 16px; height: 0; border-top: 2px solid var(--text-3)"></span>Contributed</span>
-<label style="display: flex; align-items: center; gap: 8px; cursor: pointer"><input type="checkbox"{% if bench %} checked{% endif %} hx-get="{{ bench_toggle }}" hx-target="#overview" hx-swap="outerHTML" hx-push-url="true" style="width: 15px; height: 15px; margin: 0; accent-color: var(--accent)"><span style="width: 16px; height: 0; border-top: 2px dashed var(--text-2)"></span>If all had gone into VWCE</label>
+<label style="display: flex; align-items: center; gap: 8px; cursor: pointer"><input type="checkbox"{% if bench %} checked{% endif %} hx-get="{{ bench_toggle }}" hx-target="#overview" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#overview, .sync" style="width: 15px; height: 15px; margin: 0; accent-color: var(--accent)"><span style="width: 16px; height: 0; border-top: 2px dashed var(--text-2)"></span>If all had gone into VWCE</label>
 </div>
 <div style="font-size: 13px; color: var(--text-3)">{{ bench_note }}</div>
 </div>
@@ -81,9 +81,37 @@
 <span style="position: absolute; top: 0; left: {{ x.left }}%; transform: translateX({{ x.shift }}); font-size: 11px; color: var(--text-3); white-space: nowrap">{{ x.label }}</span>
 {%- endfor %}
 </div>
+{%- else if let Some(note) = one_point %}
+{#- "Chart · not enough history", design/reference/08-states.html. -#}
+<div aria-hidden="true" style="position: relative; height: 140px">
+<div style="position: absolute; left: 0; right: 0; top: 0; border-top: 1px solid var(--line)"></div>
+<div style="position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--line)"></div>
+<div style="position: absolute; left: 0; right: 0; bottom: 0; border-top: 1px solid var(--line-2)"></div>
+<span style="position: absolute; left: 8%; top: 62%; width: 9px; height: 9px; border-radius: 50%; background: var(--accent)"></span>
+</div>
+<div style="font-size: 14px; color: var(--text-2); text-align: center">{{ note }}</div>
 {%- else %}
 <p style="margin: 0; font-size: 13px; color: var(--text-3)">Nothing to chart yet: no contributions.</p>
 {%- endif %}
 </section>
+
+{#- "Overview · loading", design/reference/08-states.html: covers the panel while htmx
+    re-renders it (the ov-skel rules in app.css). -#}
+<div class="ov-skel" role="status" aria-busy="true" aria-label="Loading portfolio" style="background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 32px; display: flex; flex-direction: column; gap: 24px; box-sizing: border-box">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 14px; min-width: 0">
+<div class="sk" style="width: 80px; height: 12px; border-radius: 4px; background: var(--surface-2)"></div>
+<div class="sk" style="width: min(300px, 60vw); height: 48px; border-radius: 8px; background: var(--surface-2)"></div>
+<div class="sk" style="width: 180px; height: 24px; border-radius: 6px; background: var(--surface-2)"></div>
+</div>
+<span style="flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px; border-radius: 8px; background: var(--surface-2); font-size: 12px; color: var(--text-2)"><svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9"/></svg>Updating prices…</span>
+</div>
+<div class="sk" style="flex: 1 1 120px; min-height: 120px; border-radius: 10px; background: var(--surface-2)"></div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<div class="sk" style="height: 72px; border-radius: 10px; background: var(--surface-2)"></div>
+<div class="sk" style="height: 72px; border-radius: 10px; background: var(--surface-2)"></div>
+<div class="sk" style="height: 72px; border-radius: 10px; background: var(--surface-2)"></div>
+</div>
+</div>
 
 </div>

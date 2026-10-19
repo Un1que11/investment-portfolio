@@ -99,7 +99,7 @@ async fn all_shows_the_whole_portfolio_and_its_chart() {
     assert!(page.contains("±0,0%"), "{page}");
     assert!(page.contains("per year, since January 2026"), "{page}");
     assert!(page.contains("net, since January 2026"), "{page}");
-    assert!(page.contains(r##"href="/" hx-get="/" hx-target="#overview" hx-swap="outerHTML" hx-push-url="true" aria-current="true">All</a>"##), "{page}");
+    assert!(page.contains(r##"href="/" hx-get="/" hx-target="#overview" hx-swap="outerHTML" hx-push-url="true" hx-indicator="#overview, .sync" aria-current="true">All</a>"##), "{page}");
     // 10 Jan, the month ends Jan–Sep and 15 Oct: 11 days, every 2nd labelled (10 Jan and 31
     // Jan share a month, so the first shows its day). Value and contributions are 1000 then
     // 1500: the axis runs 0 to 1500 in steps of 500.

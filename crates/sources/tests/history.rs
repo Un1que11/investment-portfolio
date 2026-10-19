@@ -324,3 +324,51 @@ async fn vwce_without_an_alpha_vantage_key_has_no_value() {
         ["chart: 1 of 2 days have no complete value (first 2026-10-14: VWCE)"]
     );
 }
+
+#[tokio::test]
+async fn today_is_valued_at_the_last_stored_close_while_kraken_is_down() {
+    use portfolio_core::price::DailyClose;
+    use portfolio_db::prices::{ensure_asset, upsert_closes};
+
+    let server = MockServer::start().await;
+    // Kraken is down; it is asked once, for today (13 Oct is answered by the cache).
+    mount(&server, ResponseTemplate::new(503), 1).await;
+    let pool = open_in_memory().await.unwrap();
+    ledger(&pool).await;
+    let id = ensure_asset(&pool, "BTC", "Bitcoin", AssetClass::Crypto, "EUR")
+        .await
+        .unwrap();
+    let closes = [
+        DailyClose {
+            date: d("2026-10-13"),
+            close: dec!(59000),
+        },
+        DailyClose {
+            date: d("2026-10-14"),
+            close: dec!(60000),
+        },
+    ];
+    let fetched: DateTime<Utc> = "2026-10-14T20:00:00Z".parse().unwrap();
+    upsert_closes(&pool, id, "EUR", "kraken", &closes, fetched)
+        .await
+        .unwrap();
+    let nbp = NbpClient::with_base_url(server.uri()).unwrap();
+    let kraken = KrakenClient::with_base_url(server.uri()).unwrap();
+    let s = Sources {
+        pool: &pool,
+        nbp: &nbp,
+        kraken: &kraken,
+        alphavantage: None,
+        clock: clock(),
+        gold_buyback_factor: dec!(0.95),
+    };
+    let ledger = load_ledger(&pool).await.unwrap();
+
+    let series = value_series(&ledger, &[d("2026-10-13"), d("2026-10-15")], &s).await;
+
+    // 13 Oct: 0.002 x 59 000 EUR x 4.3806 = 118 x 4.3806 = 516.9108 PLN. 15 Oct, today: the
+    // 14 Oct close at its own rate, 0.002 x 60 000 x 4.3706 = 120 x 4.3706 = 524.472 PLN.
+    let btc: Vec<Option<Decimal>> = series.assets["BTC"].iter().map(|(_, v)| *v).collect();
+    assert_eq!(btc, [Some(dec!(516.9108)), Some(dec!(524.472))]);
+    assert!(series.points.iter().all(|p| p.value.is_some()));
+}
