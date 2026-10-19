@@ -15,6 +15,7 @@ use portfolio_sources::valuation::Sources;
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 
+pub mod assets;
 pub mod base;
 pub mod chart;
 pub mod format;

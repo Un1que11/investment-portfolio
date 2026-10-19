@@ -86,3 +86,12 @@
 .ov-area,.ov-xaxis{left:0!important;margin-left:0!important}
 .ov-xaxis span:not(:first-child):not(:last-child){display:none}
 }
+
+/* Overview asset cards: the grid of screens/01 on desktop, the stacked cards of screens/03 on
+   phones (value and P&L top right, a wide sparkline). */
+.as-phone{display:none}
+@media (max-width:760px){
+.as-desk{display:none!important}
+.as-phone{display:flex}
+.as-section{gap:12px!important}
+}
