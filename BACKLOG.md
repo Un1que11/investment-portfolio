@@ -42,6 +42,22 @@
 - [x] P25. `portfolio-sync`: daily snapshot of prices and value; launchd plist + installation instructions.
 - [x] P26. Optional: monthly summary in Telegram (the same bot as the F1 digest).
 
+## Phase 6 — gold valuation from the dealer
+- [ ] P33. Mennica Skarbowa buyback price for gold coins. There is no public API: buyback prices are published as a page (Mennica Skarbowa's buyback page points to https://skup.zlota.pl/ceny-skupu). Fetch that page at most once a day (polite User-Agent, cached in `prices` as source `mennica_skup`, never in tests: recorded HTML fixtures only), parse the 1/10 oz coin rows, and match each coin by a new optional `product` field on `gold_coins` (e.g. "Krugerrand 1/10 oz"; picked from the parsed list in the add form, free text otherwise). Valuation order: manual dealer quote → Mennica buyback for that product → NBP × buyback factor; the Gold page header and each row say which one was used and when it was fetched. If the page changes or is unreachable, fall back and show the "Stale" chip like other sources. First check the page's terms/robots.txt; if scraping is not allowed, mark BLOCKED and explain.
+- [ ] P34. Gold page: show both the buyback value (what a dealer pays now, used for P&L) and the retail price (what the same coin costs to buy now, from the Mennica Skarbowa product page when `product` matches), plus the premium paid at purchase (price paid vs NBP melt value on that day), so a coin bought at a high premium does not look like a market loss. Depends on P33.
+
+## Phase 7 — Docker
+- [ ] P35. Docker image: multi-stage `Dockerfile` (cargo-chef for cached dependency builds, `debian:bookworm-slim` runtime with CA certificates and tzdata, non-root user, both `portfolio-web` and `portfolio-sync` binaries, `TZ=Europe/Warsaw`), `.dockerignore` (target/, .env, *.db, exports). The image holds no secrets and no data. Builds for `linux/arm64` (Apple Silicon) and `linux/amd64`.
+- [ ] P36. `compose.yaml`:
+  - `web`: `127.0.0.1:3000:3000` only (never 0.0.0.0), `PORTFOLIO_ADDR=0.0.0.0:3000` inside, healthcheck on `/health`, `restart: unless-stopped`.
+  - `sync`: the daily job at 22:30 Europe/Warsaw via supercronic in the same image (no host cron), plus `docker compose run --rm sync --date YYYY-MM-DD` for catch-ups.
+  - Data: named volume `portfolio-data` for `portfolio.db` (`PORTFOLIO_DB_URL`), `config.toml` bind-mounted read-only, `.env` via `env_file`.
+  - Memory and CPU: `mem_limit` / `mem_reservation` and `cpus` per service (start with web 256m, sync 256m; measure with `docker stats` and note the numbers in the PR), `pids_limit`.
+  - Networks: `internal` (internal: true) for web ↔ volume-only traffic and `egress` for the outbound price sources and Telegram; web is on both only if it needs outbound calls, otherwise internal only.
+  - Hardening: `read_only: true` root fs with a `tmpfs` /tmp, `cap_drop: [ALL]`, `security_opt: no-new-privileges`, json-file log rotation (`max-size`, `max-file`).
+  Depends on P35.
+- [ ] P37. Easy start: `./setup.sh --docker` (checks Docker is running, fills `.env` the same way, `docker compose up -d --build`, waits for health, opens the dashboard) and `./setup.sh --docker status|logs|down`; switching to Docker unloads the launchd agents and switching back stops the containers, so the sync never runs twice. A one-off backup command for the volume (`docker compose run --rm backup` writing a dated copy of the database to `./backups/`). README section "Docker". Depends on P36.
+
 ## Ideas (proposed by night job)
 - Top-up plan in buyable units: gold in whole 1/10 oz coins at the current coin price, with what is left over re-split between the other assets. Reason: P17's plan can say "gold 417 PLN" while a coin costs several times that, so its gold line cannot be bought as is.
 - (S) Kraken balance reconciliation: after each sync, compare the `Balance` endpoint per asset with the positions derived from the stored ledger and report any mismatch. Reason: `Balance` is already fetched but unused; a ledger type the mapper misses (staking, dust conversion, airdrop) would otherwise skew value and XIRR silently.
