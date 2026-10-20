@@ -12,7 +12,11 @@ use axum::extract::{Form, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use chrono::{Local, NaiveDate, NaiveDateTime};
+use std::collections::BTreeMap;
+
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, TimeDelta, Utc};
+use portfolio_sources::prices::LastKnown;
+use portfolio_sources::valuation::GOLD_COINS;
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -162,40 +166,155 @@ pub struct NavItem {
     pub current: bool,
 }
 
+/// Prices fetched longer ago than this are stale (`screens/08`, "Stale · over 6 h").
+pub const STALE_AFTER: TimeDelta = TimeDelta::hours(6);
+
+/// The sync status variants of `screens/08`. "Updating prices…" is not one of them: the layout
+/// shows it by itself while an htmx request is in flight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncKind {
+    NoPrices,
+    Fresh,
+    Stale,
+    /// A price source failed on this page: "Couldn't update prices" with Retry.
+    Failed,
+}
+
 /// The price sync line in the sidebar footer, and its short form in the phone top bar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncStatus {
+    pub kind: SyncKind,
     /// "Prices updated 08:00".
     pub long: String,
     /// "08:00".
     pub short: String,
-    /// Colour token of the dot.
+    /// Colour token of the dot (of the ✕ when failed).
     pub dot: &'static str,
+    /// Colour token of the text.
+    pub color: &'static str,
 }
 
-/// From the local time prices were last written: the time when that was today, else the date
-/// (amber, since the prices are not today's). P30 adds the source-down variants.
-pub fn sync_status(last: Option<NaiveDateTime>, today: NaiveDate) -> SyncStatus {
-    match last {
-        None => SyncStatus {
+impl SyncStatus {
+    pub fn is_failed(&self) -> bool {
+        self.kind == SyncKind::Failed
+    }
+
+    pub fn failed() -> SyncStatus {
+        SyncStatus {
+            kind: SyncKind::Failed,
+            long: "Couldn’t update prices".into(),
+            short: "Retry".into(),
+            dot: "var(--loss)",
+            color: "var(--loss)",
+        }
+    }
+}
+
+/// From the local time prices were last fetched: fresh under [`STALE_AFTER`] ("Prices updated
+/// 08:00"), stale after it, in amber ("Prices from yesterday 22:00").
+pub fn sync_status(last: Option<NaiveDateTime>, now: NaiveDateTime) -> SyncStatus {
+    let Some(t) = last else {
+        return SyncStatus {
+            kind: SyncKind::NoPrices,
             long: "No prices yet".into(),
             short: "—".into(),
             dot: "var(--text-3)",
-        },
-        Some(t) if t.date() == today => {
-            let time = t.format("%H:%M").to_string();
-            SyncStatus {
-                long: format!("Prices updated {time}"),
-                short: time,
-                dot: "var(--gain)",
-            }
+            color: "var(--text-3)",
+        };
+    };
+    let short = if t.date() == now.date() {
+        t.format("%H:%M").to_string()
+    } else {
+        t.format("%d.%m").to_string()
+    };
+    let when = format::time_ago(t, now);
+    if now - t < STALE_AFTER {
+        SyncStatus {
+            kind: SyncKind::Fresh,
+            long: format!("Prices updated {when}"),
+            short,
+            dot: "var(--gain)",
+            color: "var(--text-3)",
         }
-        Some(t) => SyncStatus {
-            long: format!("Prices updated {}", format::date(t.date())),
-            short: t.format("%d.%m").to_string(),
+    } else {
+        SyncStatus {
+            kind: SyncKind::Stale,
+            long: format!("Prices from {when}"),
+            short,
             dot: "var(--warn)",
-        },
+            color: "var(--warn)",
+        }
     }
+}
+
+/// The source's name in the banner.
+fn provider_name(provider: &str) -> &str {
+    match provider {
+        "kraken" => "Kraken",
+        "alphavantage" => "Alpha Vantage",
+        "nbp" => "NBP",
+        other => other,
+    }
+}
+
+/// An asset as the banner names it: its symbol, or "Gold" for the coins.
+fn banner_asset(symbol: &str) -> &str {
+    if symbol == GOLD_COINS { "Gold" } else { symbol }
+}
+
+/// "BTC", "BTC and ETH", "VWCE, BTC and ETH".
+fn and_list(items: &[&str]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => (*one).to_owned(),
+        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
+}
+
+/// The "price source unavailable" banner of `screens/08`, one per source that is down:
+/// "Kraken isn't responding. BTC and ETH use last known prices from 15 Oct, 22:00."
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PriceBanner {
+    pub title: String,
+    pub detail: String,
+}
+
+/// One stand-in price: the asset, its provider and when its closes were fetched (local time).
+pub type StandIn<'a> = (&'a str, &'a str, Option<NaiveDateTime>);
+
+/// The banners for the assets valued at a stored close, grouped by source in name order. The
+/// time is the group's oldest fetch, so it never claims fresher prices than some asset has.
+pub fn price_banners(stand_ins: &[StandIn<'_>]) -> Vec<PriceBanner> {
+    let mut by_provider: BTreeMap<&str, Vec<(&str, Option<NaiveDateTime>)>> = BTreeMap::new();
+    for (asset, provider, at) in stand_ins {
+        by_provider
+            .entry(*provider)
+            .or_default()
+            .push((banner_asset(asset), *at));
+    }
+    by_provider
+        .into_iter()
+        .map(|(provider, assets)| {
+            let names: Vec<&str> = assets.iter().map(|(name, _)| *name).collect();
+            let oldest = assets.iter().filter_map(|(_, at)| *at).min();
+            let one = names.len() == 1;
+            let (verb, what) = if one {
+                ("uses its", "last known price")
+            } else {
+                ("use", "last known prices")
+            };
+            let when = oldest.map_or(String::new(), |t| format!(" from {}", format::day_time(t)));
+            PriceBanner {
+                title: format!("{} isn’t responding.", provider_name(provider)),
+                detail: format!("{} {verb} {what}{when}.", and_list(&names)),
+            }
+        })
+        .collect()
+}
+
+/// A UTC moment in the Mac's local time, as the pages show times.
+pub fn local(t: DateTime<Utc>) -> NaiveDateTime {
+    t.with_timezone(&Local).naive_local()
 }
 
 /// What the layout needs on every page.
@@ -208,6 +327,10 @@ pub struct Shell {
     pub sync: SyncStatus,
     /// Where the theme toggle returns to.
     pub path: &'static str,
+    /// What Retry reloads: this page, in its current state.
+    pub retry: String,
+    /// One per price source that is down (only pages that value the portfolio set them).
+    pub banners: Vec<PriceBanner>,
 }
 
 impl Shell {
@@ -226,7 +349,30 @@ impl Shell {
                 .collect(),
             sync,
             path: page.path(),
+            retry: page.path().into(),
+            banners: Vec::new(),
         }
+    }
+
+    /// A page that valued the portfolio: a banner per source that is down, and the sync status
+    /// "Couldn't update prices" when a source failed or a price is missing. `retry` reloads the
+    /// page as it is (with its query).
+    pub fn with_prices(
+        mut self,
+        last_known: &BTreeMap<String, LastKnown>,
+        complete: bool,
+        retry: String,
+    ) -> Shell {
+        let stand_ins: Vec<StandIn<'_>> = last_known
+            .iter()
+            .map(|(asset, l)| (asset.as_str(), l.provider, l.fetched_at.map(local)))
+            .collect();
+        self.banners = price_banners(&stand_ins);
+        if !last_known.is_empty() || !complete {
+            self.sync = SyncStatus::failed();
+        }
+        self.retry = retry;
+        self
     }
 
     pub async fn load(
@@ -236,11 +382,11 @@ impl Shell {
     ) -> Result<Shell, AppError> {
         let last = portfolio_db::prices::latest_fetch(&state.pool)
             .await?
-            .map(|t| t.with_timezone(&Local).naive_local());
+            .map(local);
         Ok(Shell::new(
             page,
             theme_cookie(headers),
-            sync_status(last, (state.today)()),
+            sync_status(last, local((state.now)())),
         ))
     }
 }
@@ -349,6 +495,9 @@ pub struct AssetCard {
     pub pnl_percent: String,
     pub share: String,
     pub share_width: String,
+    /// "Last price 15 Oct, 22:00" while the asset is valued at a stored close because its
+    /// source is down: the card gets the "Stale" chip (`screens/08`).
+    pub stale: Option<String>,
 }
 
 /// An asset's figures in PLN, as `core` computes them (fractions for the ratios).
@@ -401,6 +550,7 @@ impl AssetCard {
             pnl_percent: figures.pnl_ratio.map_or_else(dash, format::signed_percent),
             share: figures.share.map_or_else(dash, format::percent),
             share_width: format::css_percent(figures.share.unwrap_or_default()),
+            stale: None,
         }
     }
 }
@@ -538,6 +688,7 @@ async fn components(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
     use rust_decimal_macros::dec;
 
     fn cookies(values: &[&str]) -> HeaderMap {
@@ -583,31 +734,112 @@ mod tests {
         assert_eq!(safe_next("/components"), "/components");
     }
 
+    fn at(d: u32, h: u32, m: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(2026, 10, d)
+            .unwrap()
+            .and_hms_opt(h, m, 0)
+            .unwrap()
+    }
+
     #[test]
-    fn sync_status_shows_the_time_today_and_the_date_before() {
-        let today = NaiveDate::from_ymd_opt(2026, 10, 16).unwrap();
-        let at = |d: u32, h: u32, m: u32| {
-            NaiveDate::from_ymd_opt(2026, 10, d)
-                .unwrap()
-                .and_hms_opt(h, m, 0)
-                .unwrap()
+    fn sync_status_is_fresh_for_six_hours_then_stale() {
+        let now = at(16, 9, 30);
+        let fresh = sync_status(Some(at(16, 8, 0)), now);
+        assert_eq!(
+            (fresh.kind, fresh.long.as_str(), fresh.short.as_str()),
+            (SyncKind::Fresh, "Prices updated 08:00", "08:00")
+        );
+        assert_eq!((fresh.dot, fresh.color), ("var(--gain)", "var(--text-3)"));
+        // 23:50 the day before is 9 h 40 min ago: stale, in amber.
+        let stale = sync_status(Some(at(15, 23, 50)), now);
+        assert_eq!(
+            (stale.kind, stale.long.as_str(), stale.short.as_str()),
+            (SyncKind::Stale, "Prices from yesterday 23:50", "15.10")
+        );
+        assert_eq!((stale.dot, stale.color), ("var(--warn)", "var(--warn)"));
+        // Exactly 6 h is stale; a minute less is fresh, even across midnight.
+        assert_eq!(sync_status(Some(at(16, 3, 30)), now).kind, SyncKind::Stale);
+        let late = sync_status(Some(at(15, 22, 0)), at(16, 3, 59));
+        assert_eq!(
+            (late.kind, late.long.as_str()),
+            (SyncKind::Fresh, "Prices updated yesterday 22:00")
+        );
+        let old = sync_status(Some(at(13, 22, 0)), now);
+        assert_eq!(old.long, "Prices from 13 Oct, 22:00");
+        let none = sync_status(None, now);
+        assert_eq!(
+            (none.kind, none.long.as_str()),
+            (SyncKind::NoPrices, "No prices yet")
+        );
+    }
+
+    #[test]
+    fn a_banner_per_source_that_is_down() {
+        let banners = price_banners(&[
+            ("BTC", "kraken", Some(at(15, 22, 0))),
+            ("ETH", "kraken", Some(at(15, 21, 0))),
+            (GOLD_COINS, "nbp", Some(at(15, 12, 15))),
+        ]);
+        let text: Vec<_> = banners
+            .iter()
+            .map(|b| format!("{} {}", b.title, b.detail))
+            .collect();
+        // Kraken's time is the older of its two fetches.
+        assert_eq!(
+            text,
+            [
+                "Kraken isn’t responding. BTC and ETH use last known prices from 15 Oct, 21:00.",
+                "NBP isn’t responding. Gold uses its last known price from 15 Oct, 12:15.",
+            ]
+        );
+        let av = price_banners(&[("VWCE", "alphavantage", None)]);
+        assert_eq!(
+            (av[0].title.as_str(), av[0].detail.as_str()),
+            (
+                "Alpha Vantage isn’t responding.",
+                "VWCE uses its last known price."
+            )
+        );
+        assert!(price_banners(&[]).is_empty());
+        assert_eq!(and_list(&["VWCE", "BTC", "ETH"]), "VWCE, BTC and ETH");
+    }
+
+    #[test]
+    fn a_failed_source_turns_the_sync_status_to_retry() {
+        let fresh = || {
+            Shell::new(
+                Page::Overview,
+                None,
+                sync_status(Some(at(16, 8, 0)), at(16, 9, 0)),
+            )
         };
-        let now = sync_status(Some(at(16, 8, 0)), today);
+        let fetched = Utc.with_ymd_and_hms(2026, 10, 15, 20, 0, 0).unwrap();
+        let down = BTreeMap::from([(
+            "BTC".to_owned(),
+            LastKnown {
+                provider: "kraken",
+                fetched_at: Some(fetched),
+                error: "HTTP 500".into(),
+            },
+        )]);
+        let shell = fresh().with_prices(&down, true, "/?period=6M".into());
+        assert_eq!(shell.sync.kind, SyncKind::Failed);
+        assert_eq!(shell.sync.long, "Couldn’t update prices");
+        assert_eq!(shell.retry, "/?period=6M");
+        assert_eq!(shell.banners.len(), 1);
+        // A missing price fails too, without a banner; all prices fresh changes nothing.
+        let missing = fresh().with_prices(&BTreeMap::new(), false, "/".into());
         assert_eq!(
-            (now.long.as_str(), now.short.as_str(), now.dot),
-            ("Prices updated 08:00", "08:00", "var(--gain)")
+            (missing.sync.kind, missing.banners.len()),
+            (SyncKind::Failed, 0)
         );
-        let old = sync_status(Some(at(15, 23, 59)), today);
-        assert_eq!(
-            (old.long.as_str(), old.short.as_str(), old.dot),
-            ("Prices updated 15.10.2026", "15.10", "var(--warn)")
-        );
-        assert_eq!(sync_status(None, today).long, "No prices yet");
+        let fine = fresh().with_prices(&BTreeMap::new(), true, "/".into());
+        assert_eq!(fine.sync.kind, SyncKind::Fresh);
     }
 
     #[test]
     fn shell_marks_the_current_page() {
-        let shell = Shell::new(Page::Gold, None, sync_status(None, NaiveDate::MIN));
+        let shell = Shell::new(Page::Gold, None, sync_status(None, NaiveDateTime::MIN));
         assert_eq!((shell.theme, shell.chosen), (Theme::Light, false));
         let labels: Vec<_> = shell.nav.iter().map(|n| n.label).collect();
         assert_eq!(labels, ["Overview", "Allocation", "IKZE", "Gold", "Import"]);
@@ -624,7 +856,7 @@ mod tests {
         let dark = Shell::new(
             Page::Gold,
             Some(Theme::Dark),
-            sync_status(None, NaiveDate::MIN),
+            sync_status(None, NaiveDateTime::MIN),
         );
         assert_eq!((dark.theme, dark.chosen), (Theme::Dark, true));
     }

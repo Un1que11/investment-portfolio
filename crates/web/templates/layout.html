@@ -18,7 +18,14 @@
 <header class="topbar" style="align-items: center; justify-content: space-between; gap: 12px; height: 56px; padding: 0 16px; border-bottom: 1px solid var(--line)">
   <a href="/" style="display: flex; align-items: center; gap: 9px; color: var(--text); font-weight: 600; font-size: 16px">{% include "logo.svg" %}Portfel</a>
   <div style="display: flex; align-items: center; gap: 4px">
-    <span style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3)"><span style="width: 6px; height: 6px; border-radius: 3px; background: {{ shell.sync.dot }}"></span>{{ shell.sync.short }}</span>
+    <span class="sync" style="display: flex; align-items: center; font-size: 12px; color: var(--text-3)">
+      {%- if shell.sync.is_failed() %}
+      <a class="sync-now" href="{{ shell.retry }}" aria-label="Couldn’t update prices. Retry" style="display: flex; align-items: center; gap: 6px; min-height: 44px; color: {{ shell.sync.color }}"><span aria-hidden="true" style="font-size: 11px">✕</span>{{ shell.sync.short }}</a>
+      {%- else %}
+      <span class="sync-now" style="display: flex; align-items: center; gap: 6px; color: {{ shell.sync.color }}"><span style="width: 6px; height: 6px; border-radius: 3px; background: {{ shell.sync.dot }}"></span>{{ shell.sync.short }}</span>
+      {%- endif %}
+      <span class="sync-busy" style="align-items: center; gap: 6px; color: var(--text-2)"><svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9"/></svg><span class="sr-only">Updating prices…</span></span>
+    </span>
     <form method="post" action="/theme" style="margin: 0">
       <input type="hidden" name="next" value="{{ shell.path }}">
       <button type="submit" name="theme" value="{{ shell.theme.other().as_str() }}" data-theme-next aria-label="Switch colour theme" style="width: 44px; height: 44px; border: 0; background: transparent; color: var(--text-2); display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10z"/></svg></button>
@@ -51,7 +58,15 @@
     </div>
   </nav>
   <div class="sidefoot" style="margin-top: auto; display: flex; flex-direction: column; gap: 12px; padding: 0 8px">
-    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3)"><span style="width: 6px; height: 6px; border-radius: 3px; background: {{ shell.sync.dot }}; flex: 0 0 auto"></span>{{ shell.sync.long }}</div>
+    <div class="sync" style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--text-3)">
+      {%- if shell.sync.is_failed() %}
+      <span class="sync-now" style="display: flex; align-items: center; gap: 8px; color: {{ shell.sync.color }}"><span aria-hidden="true" style="font-size: 11px">✕</span>{{ shell.sync.long }}</span>
+      <a class="sync-now" href="{{ shell.retry }}" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); font-size: 13px">Retry</a>
+      {%- else %}
+      <span class="sync-now" style="display: flex; align-items: center; gap: 8px; color: {{ shell.sync.color }}"><span style="width: 6px; height: 6px; border-radius: 3px; background: {{ shell.sync.dot }}; flex: 0 0 auto"></span>{{ shell.sync.long }}</span>
+      {%- endif %}
+      <span class="sync-busy" role="status" style="align-items: center; gap: 8px; color: var(--text-2)"><svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9"/></svg>Updating prices…</span>
+    </div>
     <form method="post" action="/theme" style="margin: 0">
       <input type="hidden" name="next" value="{{ shell.path }}">
       <button class="ghost" type="submit" name="theme" value="{{ shell.theme.other().as_str() }}" data-theme-next aria-label="Switch colour theme" style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 0 -10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px">{% include "moon.svg" %}<span data-theme-label>{{ shell.theme.toggle_label() }}</span></button>
@@ -61,6 +76,14 @@
 
 <main class="main" style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding: 40px 56px 72px">
 <div style="max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 32px">
+{%- for b in shell.banners %}
+{#- "Price source unavailable", design/reference/08-states.html. -#}
+<div role="status" style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; padding: 14px 16px; border-radius: 12px; background: var(--warn-soft); color: var(--warn)">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="flex: 0 0 auto"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>
+<div style="flex: 1 1 240px; font-size: 13px; line-height: 1.45; color: var(--text)"><span style="font-weight: 500">{{ b.title }}</span> <span style="color: var(--text-2)">{{ b.detail }}</span></div>
+<a href="{{ shell.retry }}" style="flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 14px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 13px">Retry</a>
+</div>
+{%- endfor %}
 {% block content %}{% endblock %}
 </div>
 </main>

@@ -26,6 +26,7 @@ use portfolio_core::config::Config;
 use portfolio_core::topup::{TopUp, TopUpError, top_up};
 use portfolio_db::gold::list_coins;
 use portfolio_db::transactions::load_ledger;
+use portfolio_sources::prices::LastKnown;
 use portfolio_sources::valuation::{GOLD_COINS, fetch_inputs, report, requirements, sleeve};
 use rust_decimal::Decimal;
 use serde::Deserialize;
@@ -528,8 +529,16 @@ struct Loaded {
     ctx: PlanContext,
 }
 
-/// The holdings valued today, as sleeves, or why they cannot be (a missing price or rate).
-async fn load(state: &AppState, config: &Config) -> Result<Result<Loaded, String>, AppError> {
+/// The assets valued at a stored close while their source is down, and whether every asset has
+/// a price: for the shell's banner and sync status.
+type Prices = (BTreeMap<String, LastKnown>, bool);
+
+/// The holdings valued today, as sleeves, or why they cannot be (a missing price or rate); and
+/// the [`Prices`] once there is a report.
+async fn load(
+    state: &AppState,
+    config: &Config,
+) -> Result<(Result<Loaded, String>, Option<Prices>), AppError> {
     let s = state.sources();
     let today = s.clock.today;
     let ledger = load_ledger(&state.pool).await?;
@@ -542,11 +551,12 @@ async fn load(state: &AppState, config: &Config) -> Result<Result<Loaded, String
     }
     let report = match report(&ledger, today, &inputs) {
         Ok(r) => r,
-        Err(e) => return Ok(Err(format!("The portfolio cannot be valued: {e}."))),
+        Err(e) => return Ok((Err(format!("The portfolio cannot be valued: {e}.")), None)),
     };
+    let prices = Some((report.last_known.clone(), report.pnl.complete));
     let values = match sleeve_values(&report.holdings, &report.valuation, sleeve) {
         Ok(v) => v,
-        Err(e) => return Ok(Err(values_error(&e))),
+        Err(e) => return Ok((Err(values_error(&e)), prices)),
     };
     let held_coins = list_coins(&state.pool)
         .await?
@@ -563,12 +573,13 @@ async fn load(state: &AppState, config: &Config) -> Result<Result<Loaded, String
         ikze_room: report.ikze(config).ok().map(|y| (y.year, y.remaining)),
         coin_value,
     };
-    Ok(Ok(Loaded {
+    let loaded = Loaded {
         allocation: allocation_of(&values, config),
         values,
         wrappers: vwce_wrappers(&ledger),
         ctx,
-    }))
+    };
+    Ok((Ok(loaded), prices))
 }
 
 fn is_htmx(headers: &HeaderMap) -> bool {
@@ -582,7 +593,7 @@ pub async fn show(
     Query(q): Query<AllocationQuery>,
 ) -> Result<Response, AppError> {
     let include_paused = q.paused.as_deref() == Some("on");
-    let loaded = load(&state, &config).await?;
+    let (loaded, prices) = load(&state, &config).await?;
     let panel = |l: &Loaded| {
         PlanPanel::new(
             &l.values,
@@ -614,7 +625,10 @@ pub async fn show(
         }
         Err(e) => Err(e),
     };
-    let shell = Shell::load(&state, &headers, Page::Allocation).await?;
+    let mut shell = Shell::load(&state, &headers, Page::Allocation).await?;
+    if let Some((last_known, complete)) = &prices {
+        shell = shell.with_prices(last_known, *complete, Page::Allocation.path().into());
+    }
     let page = AllocationPage {
         shell,
         caption,

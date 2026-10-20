@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::NaiveDate;
 use portfolio_core::benchmark::{benchmark_series, price_days};
+use portfolio_core::gold::value_coin;
 use portfolio_core::history::{ValuePoint, chart_dates, value_point};
 use portfolio_core::period::{Period, period_flows};
 use portfolio_core::portfolio::{LedgerTx, holdings_on, net_contributions_on};
@@ -18,8 +19,8 @@ use portfolio_db::gold::{self as coins, Coin};
 use rust_decimal::Decimal;
 
 use crate::fx::{FxError, rate_on_day};
-use crate::gold::{GoldValuationError, coin_value_on_day};
-use crate::prices::{PriceError, VWCE, value_in_pln};
+use crate::gold::GOLD_GRAM;
+use crate::prices::{PriceError, VWCE, close_or_last_known, value_in_pln_or_last_known};
 use crate::valuation::{GOLD_COINS, PortfolioReport, Sources, instrument, vwce_prices};
 
 const NBP: &str = "nbp";
@@ -242,29 +243,31 @@ async fn gold_on(
     s: &Sources<'_>,
     down: &mut BTreeMap<&'static str, String>,
 ) -> Option<Decimal> {
-    let mut total = Decimal::ZERO;
-    for coin in held.iter().filter(|c| c.purchased_on <= date) {
-        if down.contains_key(NBP) {
+    let coins: Vec<&Coin> = held.iter().filter(|c| c.purchased_on <= date).collect();
+    if coins.is_empty() {
+        return Some(Decimal::ZERO);
+    }
+    if down.contains_key(NBP) {
+        return None;
+    }
+    // Today falls back to the last stored price while NBP is down, as the report does.
+    let price = match close_or_last_known(s.pool, s.nbp, &GOLD_GRAM, date, s.clock).await {
+        Ok((quote, _)) => quote.close,
+        Err(e) => {
+            note_failure(&e, NBP, down);
             return None;
         }
-        match coin_value_on_day(
-            s.pool,
-            s.nbp,
-            date,
-            s.clock,
+    };
+    let mut total = Decimal::ZERO;
+    for coin in coins {
+        let v = value_coin(
+            price,
             coin.fine_weight_g,
             s.gold_buyback_factor,
             coin.manual_quote_pln,
         )
-        .await
-        {
-            Ok(v) => total += v.valuation.value_pln,
-            Err(GoldValuationError::Price(e)) => {
-                note_failure(&e, NBP, down);
-                return None;
-            }
-            Err(GoldValuationError::Gold(_)) => return None,
-        }
+        .ok()?;
+        total = total.checked_add(v.value_pln)?;
     }
     Some(total)
 }
@@ -281,8 +284,8 @@ async fn kraken_on(
     if down.contains_key(KRAKEN) || down.contains_key(NBP) {
         return None;
     }
-    match value_in_pln(s.pool, s.kraken, s.nbp, &i, date, s.clock).await {
-        Ok(v) => Some(v.close_pln * quantity),
+    match value_in_pln_or_last_known(s.pool, s.kraken, s.nbp, &i, date, s.clock).await {
+        Ok((v, _)) => v.close_pln.checked_mul(quantity),
         Err(e) => {
             note_failure(&e, KRAKEN, down);
             None
