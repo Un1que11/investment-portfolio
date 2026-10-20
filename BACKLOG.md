@@ -39,7 +39,7 @@
 - [ ] P30. States (`screens/08`): empty overview with Import / Add a coin actions, loading skeleton, stale price badge and "source unavailable" banner with Retry, single-point chart, empty import drop zone, sidebar sync status variants. Depends on P20.
 
 ## Phase 5 — automation
-- [ ] P25. `portfolio-sync`: daily snapshot of prices and value; launchd plist + installation instructions.
+- [x] P25. `portfolio-sync`: daily snapshot of prices and value; launchd plist + installation instructions.
 - [ ] P26. Optional: monthly summary in Telegram (the same bot as the F1 digest).
 
 ## Ideas (proposed by night job)

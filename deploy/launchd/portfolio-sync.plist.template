@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent for portfolio-sync (BACKLOG P25). Do not load this file directly: install.sh
+  replaces __REPO__ and __LOG__ and copies the result to ~/Library/LaunchAgents.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.portfolio.sync</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO__/target/release/portfolio-sync</string>
+    </array>
+
+    <!-- config.toml, .env and the default sqlite://portfolio.db are read from here. -->
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <!--
+      Every day at 22:30 local time: after the Xetra close (VWCE), NBP's afternoon tables and
+      the day's gold price. If the Mac is asleep then, launchd runs the job once on wake.
+    -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>22</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__LOG__</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG__</string>
+</dict>
+</plist>

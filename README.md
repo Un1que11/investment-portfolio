@@ -259,9 +259,48 @@ kept in a `theme` cookie. Nav entries for pages not built to the design yet are 
 linked. Numbers are formatted by `portfolio_web::format` (`11 500,00 zł`, `−` for minus, `+14,0%`,
 `pp` for drift).
 
+## Daily sync
+
+`portfolio-sync` is the daily job: it syncs the Kraken ledger (read-only, skipped when the
+Kraken keys are not set), values the portfolio on the day through the same price caches as the
+report (so the day's prices get fetched and cached too) and stores one row per held asset in
+`snapshots`: quantity, value in PLN and what is still invested in it in PLN (cost minus sale
+proceeds and cash dividends), both rounded to the grosz. Cash left in the accounts has no row.
+
 ```bash
-cargo run -p portfolio-sync
+cargo run -p portfolio-sync                        # today
+cargo run -p portfolio-sync -- --date 2026-10-17   # catch up a missed day
+cargo run -p portfolio-sync -- --skip-kraken       # snapshot only
 ```
+
+A day is written whole or not at all: if any held asset has no price (Alpha Vantage down, no
+key), nothing is stored for that date and an earlier snapshot of it stays. Running it again on the
+same date replaces that date's rows. It reads `config.toml`, `.env` and `portfolio.db` from the
+working directory (or `PORTFOLIO_CONFIG` / `PORTFOLIO_DB_URL`), prints counts and asset names but
+no amounts, and exits non-zero when a step failed (a failed Kraken sync still lets the snapshot
+run on the ledger already stored).
+
+### Run it every day with launchd (macOS)
+
+```bash
+deploy/launchd/install.sh
+```
+
+This builds the release binary, writes `~/Library/LaunchAgents/com.portfolio.sync.plist` from
+`deploy/launchd/portfolio-sync.plist.template` with this checkout's path, checks it with
+`plutil -lint` and loads it. The job runs at 22:30 local time (after the Xetra close and the
+day's NBP tables); if the Mac is asleep then, launchd runs it once on wake, and a day the Mac is
+off is skipped (catch it up with `--date`). Output goes to `~/Library/Logs/portfolio-sync.log`.
+
+```bash
+launchctl kickstart gui/$(id -u)/com.portfolio.sync   # run now
+launchctl print gui/$(id -u)/com.portfolio.sync       # state and last exit code
+tail -n 20 ~/Library/Logs/portfolio-sync.log
+deploy/launchd/install.sh uninstall                   # unload and remove
+```
+
+Re-run `install.sh` after pulling changes, so the agent uses a freshly built binary. If the
+checkout moves, run it from the new place.
 
 ## Checks
 
