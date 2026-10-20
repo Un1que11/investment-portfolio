@@ -1,5 +1,5 @@
 //! Portfolio settings from `config.toml`: target allocation, paused asset classes, IKZE limits,
-//! tax rate and the gold buyback factor.
+//! tax rate, the gold buyback factor and whether the monthly Telegram summary is sent.
 //!
 //! Parsing and validation are pure; reading the file is left to the caller. Every number is an
 //! exact `Decimal`: the file may write a whole number bare (`55`) or any number as a string
@@ -82,6 +82,7 @@ pub struct Config {
     ikze_limits: BTreeMap<i32, Decimal>,
     tax_rate_percent: Decimal,
     gold_buyback_factor: Decimal,
+    telegram_monthly_summary: bool,
 }
 
 impl Config {
@@ -145,6 +146,11 @@ impl Config {
     pub fn gold_buyback_factor(&self) -> Decimal {
         self.gold_buyback_factor
     }
+
+    /// Whether the daily sync sends last month's summary to Telegram (`[telegram]`, P26).
+    pub fn telegram_monthly_summary(&self) -> bool {
+        self.telegram_monthly_summary
+    }
 }
 
 #[derive(Deserialize)]
@@ -156,6 +162,8 @@ struct RawConfig {
     ikze: RawIkze,
     tax: RawTax,
     gold: RawGold,
+    #[serde(default)]
+    telegram: RawTelegram,
 }
 
 #[derive(Deserialize)]
@@ -202,6 +210,14 @@ struct RawTax {
 #[serde(deny_unknown_fields)]
 struct RawGold {
     buyback_factor: Dec,
+}
+
+/// `[telegram]`: optional; a missing table or key means no summary is sent.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct RawTelegram {
+    #[serde(default)]
+    monthly_summary: bool,
 }
 
 impl RawConfig {
@@ -275,6 +291,7 @@ impl RawConfig {
             ikze_limits,
             tax_rate_percent,
             gold_buyback_factor,
+            telegram_monthly_summary: self.telegram.monthly_summary,
         })
     }
 }
@@ -373,6 +390,8 @@ mod tests {
         assert_eq!(c.ikze_limit(2026), Some(dec!(11304.00)));
         // Crypto and gold purchases are paused for now; VWCE is bought.
         assert_eq!(AssetClass::ALL.map(|a| c.is_paused(a)), [false, true, true]);
+        // The Telegram summary is opt-in.
+        assert!(!c.telegram_monthly_summary());
     }
 
     #[test]
@@ -393,6 +412,20 @@ mod tests {
         for bad in ["bonds = true", "gold = 1", "gold = \"yes\""] {
             assert!(matches!(
                 err(&format!("{VALID}\n[paused]\n{bad}\n")),
+                ConfigError::Parse(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn the_telegram_summary_is_off_unless_turned_on() {
+        assert!(!Config::from_toml(VALID).unwrap().telegram_monthly_summary());
+        let on = format!("{VALID}\n[telegram]\nmonthly_summary = true\n");
+        assert!(Config::from_toml(&on).unwrap().telegram_monthly_summary());
+        // The token and chat id live in .env, never in the committed config.
+        for bad in ["monthly_summary = 1", "bot_token = \"x\""] {
+            assert!(matches!(
+                err(&format!("{VALID}\n[telegram]\n{bad}\n")),
                 ConfigError::Parse(_)
             ));
         }

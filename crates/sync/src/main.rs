@@ -1,6 +1,7 @@
 //! Background sync, scheduled daily by launchd (see README, "Daily sync"): Kraken ledger,
-//! prices, and the day's per-asset snapshot. Prints counts and asset names, never amounts, since
-//! its output goes to a log file. Exits with a failure code when any step failed, so a broken
+//! prices, the day's per-asset snapshot, and last month's Telegram summary when it is turned on.
+//! Prints counts and asset names, never amounts, since its output goes to a log file (only
+//! `summary` without `--send`, run by hand, prints the summary itself). Exits with a failure code when any step failed, so a broken
 //! run shows up in the log and in `launchctl print`.
 
 use std::process::ExitCode;
@@ -15,6 +16,10 @@ use portfolio_sources::kraken_private::{API_KEY_ENV, KrakenPrivateClient, PRIVAT
 use portfolio_sources::nbp::NbpClient;
 use portfolio_sources::prices::Clock;
 use portfolio_sources::valuation::{Sources, portfolio_on};
+use portfolio_sync::summary::{
+    SummaryOptions, deliver, month_summary, send_due_summary, summary_text,
+};
+use portfolio_sync::telegram::TelegramClient;
 use portfolio_sync::{Command, Options, USAGE, parse_args, write_snapshot};
 
 #[tokio::main]
@@ -23,6 +28,15 @@ async fn main() -> ExitCode {
     let today = Local::now().date_naive();
     let options = match parse_args(std::env::args().skip(1), today) {
         Ok(Command::Run(o)) => o,
+        Ok(Command::Summary(o)) => {
+            return match summary(o).await {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         Ok(Command::Help) => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
@@ -47,15 +61,42 @@ async fn main() -> ExitCode {
     }
 }
 
-/// Ok(false) when a step failed but the run could go on; Err when it could not start.
-async fn run(options: Options) -> Result<bool, Box<dyn std::error::Error>> {
+fn read_config() -> Result<Config, Box<dyn std::error::Error>> {
     let path = std::env::var("PORTFOLIO_CONFIG").unwrap_or_else(|_| "config.toml".to_owned());
     let text =
         std::fs::read_to_string(&path).map_err(|e| format!("cannot read config {path}: {e}"))?;
-    let config = Config::from_toml(&text)?;
+    Ok(Config::from_toml(&text)?)
+}
+
+async fn open_db() -> Result<sqlx::SqlitePool, Box<dyn std::error::Error>> {
     let db_url =
         std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned());
-    let pool = portfolio_db::open(&db_url).await?;
+    Ok(portfolio_db::open(&db_url).await?)
+}
+
+/// `portfolio-sync summary`: print the month's summary, or send it with `--send`.
+async fn summary(options: SummaryOptions) -> Result<(), Box<dyn std::error::Error>> {
+    let pool = open_db().await?;
+    if options.send {
+        let client = TelegramClient::from_env()?;
+        let delivery = deliver(&pool, options.month, &client, Utc::now()).await?;
+        println!("telegram: {delivery}");
+        return Ok(());
+    }
+    match month_summary(&pool, options.month).await? {
+        Some(s) => {
+            eprintln!("dry run: not sent (add --send to send it)\n");
+            println!("{}", summary_text(&s));
+        }
+        None => println!("no snapshot in {}, nothing to show", options.month),
+    }
+    Ok(())
+}
+
+/// Ok(false) when a step failed but the run could go on; Err when it could not start.
+async fn run(options: Options) -> Result<bool, Box<dyn std::error::Error>> {
+    let config = read_config()?;
+    let pool = open_db().await?;
     let mut ok = true;
 
     if !options.kraken {
@@ -110,6 +151,21 @@ async fn run(options: Options) -> Result<bool, Box<dyn std::error::Error>> {
         Err(e) => {
             eprintln!("snapshot {}: {e}", options.date);
             ok = false;
+        }
+    }
+
+    if config.telegram_monthly_summary() {
+        let today = Local::now().date_naive();
+        let result = match TelegramClient::from_env() {
+            Ok(client) => send_due_summary(&pool, today, &client, Utc::now()).await,
+            Err(e) => Err(e.to_string()),
+        };
+        match result {
+            Ok(delivery) => println!("telegram: {delivery}"),
+            Err(e) => {
+                eprintln!("telegram: {e}");
+                ok = false;
+            }
         }
     }
     Ok(ok)

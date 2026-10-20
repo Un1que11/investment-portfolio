@@ -15,6 +15,7 @@ pub mod pnl;
 pub mod portfolio;
 pub mod price;
 pub mod snapshot;
+pub mod summary;
 pub mod topup;
 pub mod xirr;
 

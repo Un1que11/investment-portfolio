@@ -7,6 +7,7 @@ pub mod gold;
 pub mod kraken;
 pub mod prices;
 pub mod snapshots;
+pub mod summaries;
 pub mod transactions;
 
 use std::str::FromStr;

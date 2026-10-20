@@ -31,3 +31,9 @@ rate_percent = 12
 # Share of the melt value a dealer pays for a coin without a manual quote. Above 0, at most 1.5.
 [gold]
 buyback_factor = "0.95"
+
+# Monthly summary in Telegram (BACKLOG P26): the daily portfolio-sync sends last month's summary
+# once, on its first run in the new month. Needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env
+# (the F1 digest's bot). Missing = false.
+[telegram]
+monthly_summary = false

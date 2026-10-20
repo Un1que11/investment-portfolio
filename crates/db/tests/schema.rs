@@ -93,6 +93,7 @@ async fn migrations_create_all_tables() {
             "kraken_ledger",
             "prices",
             "snapshots",
+            "telegram_summaries",
             "transactions"
         ]
     );
