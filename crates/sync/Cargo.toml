@@ -12,12 +12,18 @@ dotenvy.workspace = true
 portfolio-core.workspace = true
 portfolio-db.workspace = true
 portfolio-sources.workspace = true
+# Only for its number format (`format`) and asset names, so the summary reads like the pages.
+portfolio-web.workspace = true
+reqwest.workspace = true
 rust_decimal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
 rust_decimal_macros.workspace = true
+wiremock.workspace = true
 
 [lints]
 workspace = true

@@ -110,3 +110,41 @@ pub async fn latest_day(pool: &SqlitePool) -> Result<Option<NaiveDate>, sqlx::Er
     })
     .transpose()
 }
+
+/// The last day with a snapshot before `day`, if any.
+pub async fn latest_day_before(
+    pool: &SqlitePool,
+    day: NaiveDate,
+) -> Result<Option<NaiveDate>, sqlx::Error> {
+    let found: Option<String> =
+        sqlx::query_scalar("SELECT max(snapshot_date) FROM snapshots WHERE snapshot_date < ?")
+            .bind(day.format(DATE_FORMAT).to_string())
+            .fetch_one(pool)
+            .await?;
+    found.map(|d| parse_day(&d)).transpose()
+}
+
+/// The first and the last day with a snapshot from `from` to `to`, both included; None when
+/// there is none.
+pub async fn first_and_last_day(
+    pool: &SqlitePool,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Option<(NaiveDate, NaiveDate)>, sqlx::Error> {
+    let (first, last): (Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT min(snapshot_date), max(snapshot_date) FROM snapshots
+         WHERE snapshot_date >= ? AND snapshot_date <= ?",
+    )
+    .bind(from.format(DATE_FORMAT).to_string())
+    .bind(to.format(DATE_FORMAT).to_string())
+    .fetch_one(pool)
+    .await?;
+    match (first, last) {
+        (Some(first), Some(last)) => Ok(Some((parse_day(&first)?, parse_day(&last)?))),
+        _ => Ok(None),
+    }
+}
+
+fn parse_day(text: &str) -> Result<NaiveDate, sqlx::Error> {
+    NaiveDate::parse_from_str(text, DATE_FORMAT).map_err(|e| sqlx::Error::Decode(Box::new(e)))
+}

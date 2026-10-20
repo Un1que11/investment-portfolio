@@ -1499,10 +1499,15 @@ dependencies = [
  "portfolio-core",
  "portfolio-db",
  "portfolio-sources",
+ "portfolio-web",
+ "reqwest",
  "rust_decimal",
  "rust_decimal_macros",
+ "serde",
+ "serde_json",
  "sqlx",
  "tokio",
+ "wiremock",
 ]
 
 [[package]]

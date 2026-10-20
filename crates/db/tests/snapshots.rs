@@ -5,7 +5,9 @@ use portfolio_core::AssetClass;
 use portfolio_core::snapshot::SnapshotRow;
 use portfolio_db::open_in_memory;
 use portfolio_db::prices::ensure_asset;
-use portfolio_db::snapshots::{SnapshotWriteError, latest_day, load_day, replace_day};
+use portfolio_db::snapshots::{
+    SnapshotWriteError, first_and_last_day, latest_day, latest_day_before, load_day, replace_day,
+};
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 
@@ -119,4 +121,36 @@ async fn an_unknown_asset_fails_and_keeps_the_stored_day() {
 async fn no_snapshot_yet() {
     let pool = db().await;
     assert_eq!(latest_day(&pool).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn days_around_a_month() {
+    // Snapshots on 31 Aug, 12 Sep and 30 Sep; September is looked up as 1-30 Sep.
+    let pool = db().await;
+    for day in ["2026-08-31", "2026-09-12", "2026-09-30"] {
+        replace_day(&pool, d(day), &[row("VWCE", "1", "500.00", "480.00")])
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        first_and_last_day(&pool, d("2026-09-01"), d("2026-09-30"))
+            .await
+            .unwrap(),
+        Some((d("2026-09-12"), d("2026-09-30")))
+    );
+    assert_eq!(
+        latest_day_before(&pool, d("2026-09-01")).await.unwrap(),
+        Some(d("2026-08-31"))
+    );
+    // Before the first snapshot and in a month without one: nothing.
+    assert_eq!(
+        latest_day_before(&pool, d("2026-08-31")).await.unwrap(),
+        None
+    );
+    assert_eq!(
+        first_and_last_day(&pool, d("2026-10-01"), d("2026-10-31"))
+            .await
+            .unwrap(),
+        None
+    );
 }

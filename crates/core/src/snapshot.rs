@@ -1,13 +1,15 @@
 //! The daily per-asset snapshot that `portfolio-sync` stores (table `snapshots`).
 //!
-//! One row per asset held on the date: its quantity, its value in PLN and what is still
-//! invested in it in PLN (cost - sale proceeds - cash dividends, see
+//! One row per asset held on the date, and per asset held before and sold out since (quantity
+//! and value 0): its quantity, its value in PLN and what is still invested in it in PLN (cost - sale proceeds - cash dividends, see
 //! [`crate::pnl::AssetPnl::net_invested`]). PLN amounts are rounded to the grosz, half away from
 //! zero, so a stored day reads like a statement; quantities are kept exact.
 //!
 //! A day is all or nothing: if any held asset has no price, no rows are produced, because the
 //! portfolio total of a day is the sum of its rows and a missing row would understate it
-//! silently. Cash left in accounts has no asset and is not part of the snapshot.
+//! silently. A sold-out asset keeps its row so that what its sales returned stays in the day
+//! (its invested amount, often negative), and the change between two days ([`crate::summary`])
+//! includes it. Cash left in accounts has no asset and is not part of the snapshot.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -66,8 +68,8 @@ pub fn grosze(v: Decimal) -> Decimal {
     r
 }
 
-/// Rows for every asset in `holdings`, in symbol order. Assets with a zero quantity are left
-/// out (nothing is held).
+/// Rows for every asset in `holdings`, plus a quantity-0, value-0 row for every asset in `pnl`
+/// that is no longer held (sold out), in symbol order.
 pub fn snapshot_rows(
     holdings: &Holdings,
     valuation: &Valuation,
@@ -86,9 +88,21 @@ pub fn snapshot_rows(
     if !unpriced.is_empty() {
         return Err(SnapshotError::Unpriced(unpriced));
     }
-    held.into_iter()
+    let sold_out = pnl
+        .by_asset
+        .keys()
+        .filter(|a| !held.contains_key(a))
+        .map(|a| (a, &Decimal::ZERO));
+    let mut rows = held
+        .iter()
+        .map(|(&asset, &quantity)| (asset, quantity))
+        .chain(sold_out)
         .map(|(asset, &quantity)| {
-            let value = valuation.by_asset[asset.as_str()];
+            let value = if quantity.is_zero() {
+                Decimal::ZERO
+            } else {
+                valuation.by_asset[asset.as_str()]
+            };
             if quantity < Decimal::ZERO || value < Decimal::ZERO {
                 return Err(SnapshotError::Negative(asset.clone()));
             }
@@ -103,7 +117,9 @@ pub fn snapshot_rows(
                 invested_pln: grosze(invested),
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    rows.sort_by(|a, b| a.asset.cmp(&b.asset));
+    Ok(rows)
 }
 
 #[cfg(test)]
@@ -224,13 +240,34 @@ mod tests {
     }
 
     #[test]
-    fn fully_sold_assets_are_left_out() {
-        // A zero quantity needs no price and gets no row.
-        let h = holdings(&[("VWCE", dec!(2)), ("ETH", dec!(0))]);
+    fn a_sold_out_asset_keeps_a_row_with_what_its_sales_returned() {
+        // ETH bought for 1 000.00 and sold out for 1 150.00: no price needed, quantity and value
+        // 0, invested 1 000 - 1 150 = -150.00. BTC at quantity 0 without any flows has no row.
+        let h = holdings(&[("VWCE", dec!(2)), ("BTC", dec!(0))]);
         let v = valuation(&[("VWCE", dec!(1000))]);
-        let rows = snapshot_rows(&h, &v, &pnl(&[])).unwrap();
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].asset, "VWCE");
+        let p = pnl(&[
+            ("VWCE", dec!(990), dec!(0), dec!(0)),
+            ("ETH", dec!(1000), dec!(1150), dec!(0)),
+        ]);
+        let rows = snapshot_rows(&h, &v, &p).unwrap();
+        let shown: Vec<_> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r.asset.as_str(),
+                    r.quantity.to_string(),
+                    r.value_pln.to_string(),
+                    r.invested_pln.to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            shown,
+            vec![
+                ("ETH", "0".into(), "0.00".into(), "-150.00".into()),
+                ("VWCE", "2".into(), "1000.00".into(), "990.00".into()),
+            ]
+        );
     }
 
     #[test]

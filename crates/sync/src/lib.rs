@@ -1,8 +1,12 @@
 //! The daily job behind the `portfolio-sync` binary: sync the Kraken ledger (when keys are
-//! configured), value the portfolio on the day, and store one snapshot row per asset.
+//! configured), value the portfolio on the day, store one snapshot row per asset, and send last
+//! month's summary to Telegram when it is turned on ([`summary`]).
 //!
 //! The pieces that do not need the network live here so they can be tested: argument parsing
 //! and turning a [`PortfolioReport`] into stored snapshot rows.
+
+pub mod summary;
+pub mod telegram;
 
 use std::fmt;
 
@@ -14,14 +18,19 @@ use sqlx::SqlitePool;
 
 pub const USAGE: &str = "\
 usage: portfolio-sync [--date YYYY-MM-DD] [--skip-kraken]
+       portfolio-sync summary [--month YYYY-MM] [--send]
 
 Syncs the Kraken ledger (read-only; skipped when KRAKEN_API_KEY and KRAKEN_PRIVATE_KEY are not
 set), values the portfolio on the date (default: today) and stores one snapshot row per asset,
-replacing any snapshot already stored for that date.
+replacing any snapshot already stored for that date. With [telegram] monthly_summary = true in
+the config, it then sends last month's summary to Telegram if that was not sent yet.
+
+summary prints a month's summary (default: last month) from the stored snapshots without
+sending it; --send sends it to Telegram unless it was sent already.
 
 Environment (or .env in the working directory): PORTFOLIO_DB_URL (default
 sqlite://portfolio.db), PORTFOLIO_CONFIG (default config.toml), ALPHAVANTAGE_API_KEY,
-KRAKEN_API_KEY, KRAKEN_PRIVATE_KEY.";
+KRAKEN_API_KEY, KRAKEN_PRIVATE_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Options {
@@ -34,6 +43,7 @@ pub struct Options {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Run(Options),
+    Summary(summary::SummaryOptions),
     Help,
 }
 
@@ -48,7 +58,11 @@ where
         date: today,
         kraken: true,
     };
-    let mut args = args.into_iter();
+    let mut args = args.into_iter().peekable();
+    if args.peek().is_some_and(|a| a.as_ref() == "summary") {
+        args.next();
+        return summary::parse_args(args, today).map(Command::Summary);
+    }
     while let Some(arg) = args.next() {
         match arg.as_ref() {
             "-h" | "--help" => return Ok(Command::Help),
@@ -138,6 +152,19 @@ mod tests {
         assert!(parse_args(["--date", "19.10.2026"], today).is_err());
         assert!(parse_args(["--date", "2026-10-20"], today).is_err());
         assert!(parse_args(["--force"], today).is_err());
+    }
+
+    #[test]
+    fn summary_is_a_subcommand() {
+        assert_eq!(
+            parse_args(["summary", "--send"], d("2026-10-19")),
+            Ok(Command::Summary(summary::SummaryOptions {
+                month: "2026-09".parse().unwrap(),
+                send: true
+            }))
+        );
+        // Only as the first argument.
+        assert!(parse_args(["--skip-kraken", "summary"], d("2026-10-19")).is_err());
     }
 
     #[test]

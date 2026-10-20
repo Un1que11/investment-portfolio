@@ -268,7 +268,9 @@ kept in a `theme` cookie. Numbers are formatted by `portfolio_web::format` (`11 
 Kraken keys are not set), values the portfolio on the day through the same price caches as the
 report (so the day's prices get fetched and cached too) and stores one row per held asset in
 `snapshots`: quantity, value in PLN and what is still invested in it in PLN (cost minus sale
-proceeds and cash dividends), both rounded to the grosz. Cash left in the accounts has no row.
+proceeds and cash dividends), both rounded to the grosz. An asset sold out keeps a row with
+quantity and value 0, so what its sales returned stays in the day. Cash left in the accounts has
+no row.
 
 ```bash
 cargo run -p portfolio-sync                        # today
@@ -318,6 +320,25 @@ deploy/launchd/install.sh uninstall                   # unload and remove
 
 Re-run `install.sh` after pulling changes, so the agent uses a freshly built binary. If the
 checkout moves, run it from the new place.
+
+### Monthly summary in Telegram
+
+Optional, off by default. With `monthly_summary = true` under `[telegram]` in `config.toml` and
+`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` in `.env` (the F1 digest's bot), the daily run sends
+last month's summary once: on its first run in the new month, or the first one after that if
+the Mac was off. A failed send is logged, the run exits non-zero, and the next run tries again.
+Sent months are kept in `telegram_summaries`; the log says only "summary for 2026-09 sent".
+
+The summary compares the month's last snapshot with the last one before the month: value, the
+change split into new money (what went into the assets, net of sales) and profit, profit to
+date, and each asset's profit in the month. It is plain text in the pages' number format. Cash
+is not included, as in the snapshots.
+
+```bash
+cargo run -p portfolio-sync -- summary                     # print last month's, send nothing
+cargo run -p portfolio-sync -- summary --month 2026-09     # print a given month's
+cargo run -p portfolio-sync -- summary --send              # send it now (once per month)
+```
 
 ## Checks
 
