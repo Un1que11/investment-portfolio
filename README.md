@@ -262,6 +262,21 @@ Google Fonts. The theme follows the system until the sidebar toggle is used; the
 kept in a `theme` cookie. Numbers are formatted by `portfolio_web::format` (`11 500,00 zł`, `−` for minus, `+14,0%`,
 `pp` for drift).
 
+States (`design/screens/08`):
+- Overview with nothing imported or added: "Nothing to show yet" with Import XTB history and
+  Add a coin.
+- A source that is down (Overview, Allocation): a banner per source ("Alpha Vantage isn't
+  responding. VWCE uses its last known price from 17 Oct, 06:21.") with Retry, which reloads the
+  same view. The assets valued at a stored close get the "Stale" chip and "Last price …".
+- Sidebar sync status: "Prices updated 08:00" when the last fetch is under 6 h old, "Prices from
+  yesterday 22:00" in amber after that, "Couldn't update prices" with Retry when a source failed
+  or a price is missing on the page, and "Updating prices…" while htmx re-renders the Overview
+  panel.
+- Overview loading: the panel's skeleton covers it while the period switch or the benchmark
+  checkbox re-render it, from 250 ms on, so quick answers from the caches do not flash it.
+- Chart with one valued day: "One data point so far" instead of a line.
+- Import with nothing uploaded: the dashed drop zone (P24).
+
 ## Daily sync
 
 `portfolio-sync` is the daily job: it syncs the Kraken ledger (read-only, skipped when the
@@ -277,7 +292,9 @@ cargo run -p portfolio-sync -- --skip-kraken       # snapshot only
 ```
 
 A day is written whole or not at all: if any held asset has no price (Alpha Vantage down, no
-key), nothing is stored for that date and an earlier snapshot of it stays. Running it again on the
+key), or is valued at an earlier day's stored close because its source failed (the pages' "Stale"
+stand-in), nothing is stored for that date and an earlier snapshot of it stays; catch the day up
+later with `--date`, which asks for that day's own close. Running it again on the
 same date replaces that date's rows. It reads `config.toml`, `.env` and `portfolio.db` from the
 working directory (or `PORTFOLIO_CONFIG` / `PORTFOLIO_DB_URL`), prints counts and asset names but
 no amounts, and exits non-zero when a step failed (a failed Kraken sync still lets the snapshot
@@ -294,20 +311,6 @@ This builds the release binary, writes `~/Library/LaunchAgents/com.portfolio.syn
 `plutil -lint` and loads it. The job runs at 22:30 local time (after the Xetra close and the
 day's NBP tables); if the Mac is asleep then, launchd runs it once on wake, and a day the Mac is
 off is skipped (catch it up with `--date`). Output goes to `~/Library/Logs/portfolio-sync.log`.
-States (`design/screens/08`):
-- Overview with nothing imported or added: "Nothing to show yet" with Import XTB history and
-  Add a coin.
-- A source that is down (Overview, Allocation): a banner per source ("Alpha Vantage isn't
-  responding. VWCE uses its last known price from 17 Oct, 06:21.") with Retry, which reloads the
-  same view. The assets valued at a stored close get the "Stale" chip and "Last price …".
-- Sidebar sync status: "Prices updated 08:00" when the last fetch is under 6 h old, "Prices from
-  yesterday 22:00" in amber after that, "Couldn't update prices" with Retry when a source failed
-  or a price is missing on the page, and "Updating prices…" while htmx re-renders the Overview
-  panel.
-- Overview loading: the panel's skeleton covers it while the period switch or the benchmark
-  checkbox re-render it, from 250 ms on, so quick answers from the caches do not flash it.
-- Chart with one valued day: "One data point so far" instead of a line.
-- Import with nothing uploaded: the dashed drop zone (P24).
 
 ```bash
 launchctl kickstart gui/$(id -u)/com.portfolio.sync   # run now

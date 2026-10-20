@@ -8,6 +8,7 @@ use portfolio_core::portfolio::{AccountKind, LedgerTx, TxKind, Wrapper};
 use portfolio_core::snapshot::SnapshotRow;
 use portfolio_db::prices::ensure_asset;
 use portfolio_db::snapshots::{load_day, replace_day};
+use portfolio_sources::prices::LastKnown;
 use portfolio_sources::valuation::{Inputs, report};
 use portfolio_sync::{SnapshotFailure, write_snapshot};
 use rust_decimal::Decimal;
@@ -109,5 +110,42 @@ async fn an_unpriced_day_writes_nothing_and_keeps_the_earlier_run() {
     let err = write_snapshot(&pool, &r).await.unwrap_err();
     assert!(matches!(err, SnapshotFailure::Incomplete(_)), "{err}");
     assert_eq!(err.to_string(), "snapshot not written: no price for VWCE");
+    assert_eq!(load_day(&pool, d("2026-10-19")).await.unwrap(), earlier);
+}
+
+#[tokio::test]
+async fn a_day_valued_at_a_last_known_close_writes_nothing_and_keeps_the_earlier_run() {
+    // Alpha Vantage failed at 22:30, so VWCE is valued at a stored close of an earlier day
+    // (P30's stand-in for the pages). Stored as the day's snapshot it would stay wrong for good;
+    // nothing is written, and `--date` on a later day asks for that day's own close instead.
+    let pool = portfolio_db::open_in_memory().await.unwrap();
+    ensure_asset(&pool, "VWCE", "VWCE", AssetClass::Vwce, "EUR")
+        .await
+        .unwrap();
+    let earlier = vec![SnapshotRow {
+        asset: "VWCE".into(),
+        quantity: dec!(4),
+        value_pln: dec!(2150.00),
+        invested_pln: dec!(2025.00),
+    }];
+    replace_day(&pool, d("2026-10-19"), &earlier).await.unwrap();
+
+    let mut stale = inputs(Some(dec!(2100)));
+    stale.last_known.insert(
+        "VWCE".into(),
+        LastKnown {
+            provider: "alphavantage",
+            fetched_at: None,
+            error: "rate limited".into(),
+        },
+    );
+    let r = report(&ledger(), d("2026-10-19"), &stale).unwrap();
+    let err = write_snapshot(&pool, &r).await.unwrap_err();
+    assert!(matches!(err, SnapshotFailure::LastKnown { .. }), "{err}");
+    assert_eq!(
+        err.to_string(),
+        "snapshot not written: VWCE has only a stored close of an earlier day (its source failed); \
+         re-run later with --date 2026-10-19"
+    );
     assert_eq!(load_day(&pool, d("2026-10-19")).await.unwrap(), earlier);
 }
