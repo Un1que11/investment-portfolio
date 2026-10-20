@@ -73,6 +73,13 @@ where
 pub enum SnapshotFailure {
     /// The report cannot become a complete day (e.g. an asset has no price).
     Incomplete(SnapshotError),
+    /// These assets are valued at a stored close of an earlier day because their source failed
+    /// (see [`portfolio_sources::prices::close_or_last_known`]); the date with its own closes
+    /// can be written later with `--date`.
+    LastKnown {
+        date: NaiveDate,
+        assets: Vec<String>,
+    },
     Write(SnapshotWriteError),
 }
 
@@ -80,6 +87,13 @@ impl fmt::Display for SnapshotFailure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SnapshotFailure::Incomplete(e) => write!(f, "snapshot not written: {e}"),
+            SnapshotFailure::LastKnown { date, assets } => write!(
+                f,
+                "snapshot not written: {} {} only a stored close of an earlier day (its source \
+                 failed); re-run later with --date {date}",
+                assets.join(", "),
+                if assets.len() == 1 { "has" } else { "have" }
+            ),
             SnapshotFailure::Write(e) => write!(f, "{e}"),
         }
     }
@@ -88,12 +102,19 @@ impl fmt::Display for SnapshotFailure {
 impl std::error::Error for SnapshotFailure {}
 
 /// Stores the report's day as snapshot rows, replacing what was stored for that date, and
-/// returns the number of rows. When the day is incomplete nothing is written and an earlier
-/// complete snapshot of the same date is kept.
+/// returns the number of rows. When the day is incomplete, or an asset is valued at a stored
+/// close standing in for a failed source, nothing is written and an earlier snapshot of the
+/// same date is kept: a stand-in close stored as the day's value would never be corrected.
 pub async fn write_snapshot(
     pool: &SqlitePool,
     report: &PortfolioReport,
 ) -> Result<usize, SnapshotFailure> {
+    if !report.last_known.is_empty() {
+        return Err(SnapshotFailure::LastKnown {
+            date: report.date,
+            assets: report.last_known.keys().cloned().collect(),
+        });
+    }
     let rows = snapshot_rows(&report.holdings, &report.valuation, &report.pnl)
         .map_err(SnapshotFailure::Incomplete)?;
     replace_day(pool, report.date, &rows)
