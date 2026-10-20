@@ -24,7 +24,7 @@ pub struct SummaryOptions {
     pub send: bool,
 }
 
-/// Parses the arguments after `summary`.
+/// Parses the arguments after `summary`. `--send` is refused for a month that has not ended.
 pub fn parse_args<I, S>(args: I, today: NaiveDate) -> Result<SummaryOptions, String>
 where
     I: IntoIterator<Item = S>,
@@ -47,6 +47,14 @@ where
             }
             other => return Err(format!("unknown summary argument {other:?}")),
         }
+    }
+    // A month is sent once, so sending one that has not ended would keep its whole summary
+    // from ever going out.
+    if options.send && options.month >= Month::of(today) {
+        return Err(format!(
+            "{} has not ended yet: its summary can be printed but not sent",
+            options.month
+        ));
     }
     Ok(options)
 }
@@ -196,12 +204,26 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_args(["--month", "2026-10", "--send"], today),
+            parse_args(["--month", "2026-08", "--send"], today),
             Ok(SummaryOptions {
-                month: m("2026-10"),
+                month: m("2026-08"),
                 send: true
             })
         );
+        // The current month can be printed so far, but not sent: sending would record it as
+        // sent and the whole month's summary would never go out.
+        assert_eq!(
+            parse_args(["--month", "2026-10"], today),
+            Ok(SummaryOptions {
+                month: m("2026-10"),
+                send: false
+            })
+        );
+        assert!(parse_args(["--month", "2026-10", "--send"], today).is_err());
+        assert!(parse_args(["--send", "--month", "2026-10"], today).is_err());
+        // On a month's last day it has not ended yet either.
+        assert!(parse_args(["--month", "2026-10", "--send"], d("2026-10-31")).is_err());
+        assert!(parse_args(["--send"], d("2026-11-01")).is_ok());
         assert!(parse_args(["--month"], today).is_err());
         assert!(parse_args(["--month", "2026-11"], today).is_err());
         assert!(parse_args(["--month", "09.2026"], today).is_err());
