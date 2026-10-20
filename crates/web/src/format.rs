@@ -5,7 +5,7 @@
 //! Amounts are rounded half away from zero. A signed figure takes its sign from the rounded
 //! value, so -0.004 zł is shown as `±0,00 zł` in neutral grey rather than as a red `−0,00 zł`.
 
-use chrono::NaiveDate;
+use chrono::{Days, NaiveDate, NaiveDateTime};
 use rust_decimal::{Decimal, RoundingStrategy};
 
 /// Between thousands and before units.
@@ -175,6 +175,24 @@ pub fn date(day: NaiveDate) -> String {
     day.format("%d.%m.%Y").to_string()
 }
 
+/// A moment as the states sheet writes it (`screens/08`): "15 Oct, 22:00", "3 Jan, 08:05".
+pub fn day_time(t: NaiveDateTime) -> String {
+    t.format("%-d %b, %H:%M").to_string()
+}
+
+/// A past moment relative to `now`: "08:00" on the same day, "yesterday 22:00" the day before,
+/// otherwise [`day_time`].
+pub fn time_ago(t: NaiveDateTime, now: NaiveDateTime) -> String {
+    let time = t.format("%H:%M");
+    if t.date() == now.date() {
+        time.to_string()
+    } else if now.date().checked_sub_days(Days::new(1)) == Some(t.date()) {
+        format!("yesterday {time}")
+    } else {
+        day_time(t)
+    }
+}
+
 /// A fraction as a CSS width, clamped to 0–100% and rounded to 0.1: 0.287 -> "28.7%".
 pub fn css_percent(fraction: Decimal) -> String {
     let p = round(fraction * Decimal::ONE_HUNDRED, 1).clamp(Decimal::ZERO, Decimal::ONE_HUNDRED);
@@ -329,5 +347,27 @@ mod tests {
         );
         assert_eq!(sparkline_path(&[dec!(7)]).unwrap(), "M0.0 16.0 L96.0 16.0");
         assert_eq!(sparkline_path(&[]), None);
+    }
+
+    #[test]
+    fn moments_read_as_in_the_states_sheet() {
+        let at = |d: &str, h: u32, m: u32| {
+            d.parse::<NaiveDate>()
+                .unwrap()
+                .and_hms_opt(h, m, 0)
+                .unwrap()
+        };
+        assert_eq!(day_time(at("2026-10-15", 22, 0)), "15 Oct, 22:00");
+        assert_eq!(day_time(at("2027-01-03", 8, 5)), "3 Jan, 08:05");
+        let now = at("2026-10-16", 9, 30);
+        assert_eq!(time_ago(at("2026-10-16", 8, 0), now), "08:00");
+        assert_eq!(time_ago(at("2026-10-15", 22, 0), now), "yesterday 22:00");
+        assert_eq!(time_ago(at("2026-10-14", 22, 0), now), "14 Oct, 22:00");
+        // Across a new year: 31 Dec is yesterday on 1 Jan.
+        let new_year = at("2027-01-01", 0, 30);
+        assert_eq!(
+            time_ago(at("2026-12-31", 23, 50), new_year),
+            "yesterday 23:50"
+        );
     }
 }

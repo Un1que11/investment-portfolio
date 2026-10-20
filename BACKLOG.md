@@ -36,7 +36,7 @@
 - [x] P23. IKZE (`screens/05`): limit progress bar with hatched remainder, December reminder banner with days left and a suggested split of the remaining limit over the remaining months, 12%/32% deduction toggle, contributions-by-month SVG bars with dashed "needed to max out" months. Depends on P28.
 - [x] P29. Gold page restyle (`screens/06`): summary tiles, coins table, inline add form with field validation as in the components sheet, "Purchases paused" badge. Depends on P28, P31.
 - [x] P24. XTB import (`screens/07`): Upload → Review → Done steps, preview table (New vs Already imported, toggle), confirm "Add N operations", Cancel. Depends on P28.
-- [ ] P30. States (`screens/08`): empty overview with Import / Add a coin actions, loading skeleton, stale price badge and "source unavailable" banner with Retry, single-point chart, empty import drop zone, sidebar sync status variants. Depends on P20.
+- [x] P30. States (`screens/08`): empty overview with Import / Add a coin actions, loading skeleton, stale price badge and "source unavailable" banner with Retry, single-point chart, empty import drop zone, sidebar sync status variants. Depends on P20.
 
 ## Phase 5 — automation
 - [ ] P25. `portfolio-sync`: daily snapshot of prices and value; launchd plist + installation instructions.

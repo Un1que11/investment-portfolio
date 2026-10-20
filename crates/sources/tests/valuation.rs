@@ -376,6 +376,7 @@ async fn report_compares_holdings_with_the_targets() {
         cash_rates: BTreeMap::from([("EUR".into(), Some(dec!(4)))]),
         flow_rates: req.flow_rates.iter().map(rate).collect(),
         vwce_prices: BTreeMap::new(),
+        last_known: BTreeMap::new(),
         problems: vec![],
     };
 
@@ -894,4 +895,122 @@ async fn benchmark_fetches_the_weekly_history_for_days_before_the_daily_closes()
     // above are checked when the server is dropped).
     let again = portfolio_on(date, &sources).await.unwrap();
     assert_eq!(again.benchmark, r.benchmark);
+}
+
+#[tokio::test]
+async fn while_kraken_and_nbp_are_down_today_uses_the_last_stored_prices() {
+    use portfolio_core::fx::FxRate;
+    use portfolio_core::price::DailyClose;
+    use portfolio_db::fx::upsert_rates;
+    use portfolio_db::prices::{ensure_asset, upsert_closes};
+
+    // NBP answers 404 for a range without data, which counts as "no closes": a 500 is down.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    let pool = open_in_memory().await.unwrap();
+    kraken_ledger(&pool).await;
+    let coin = NewCoin {
+        label: None,
+        purchased_on: d("2026-10-01"),
+        purchase_price_pln: dec!(1600),
+        fine_weight_g: dec!(3.11),
+        manual_quote_pln: None,
+    };
+    add_coin(&pool, &coin).await.unwrap();
+    // Wednesday's closes, fetched that evening: BTC 60 000 EUR, gold 500 PLN a gram; 4 PLN/EUR.
+    let fetched: DateTime<Utc> = "2026-10-14T20:00:00Z".parse().unwrap();
+    for (symbol, name, class, currency, source, close) in [
+        (
+            "BTC",
+            "Bitcoin",
+            AssetClass::Crypto,
+            "EUR",
+            "kraken",
+            dec!(60000),
+        ),
+        (
+            "XAU_G",
+            "Gold, PLN per gram (NBP)",
+            AssetClass::Gold,
+            "PLN",
+            "nbp",
+            dec!(500),
+        ),
+    ] {
+        let id = ensure_asset(&pool, symbol, name, class, currency)
+            .await
+            .unwrap();
+        let close = DailyClose {
+            date: d("2026-10-14"),
+            close,
+        };
+        upsert_closes(&pool, id, currency, source, &[close], fetched)
+            .await
+            .unwrap();
+    }
+    let rates: Vec<FxRate> = ["2026-10-12", "2026-10-13", "2026-10-14"]
+        .into_iter()
+        .map(|day| FxRate {
+            currency: "EUR".into(),
+            effective_date: d(day),
+            mid: dec!(4),
+            table_no: "200/A/NBP/2026".into(),
+        })
+        .collect();
+    upsert_rates(&pool, &rates).await.unwrap();
+    let ledger = load_ledger(&pool).await.unwrap();
+    let nbp = NbpClient::with_base_url(server.uri()).unwrap();
+    let kraken = KrakenClient::with_base_url(server.uri()).unwrap();
+    // Thursday 14:00: 18 h after the last fetch, so both are asked again, and both fail.
+    let now: DateTime<Utc> = "2026-10-15T14:00:00Z".parse().unwrap();
+    let sources = Sources {
+        pool: &pool,
+        nbp: &nbp,
+        kraken: &kraken,
+        alphavantage: None,
+        clock: Clock {
+            now,
+            today: now.date_naive(),
+        },
+        gold_buyback_factor: dec!(0.95),
+    };
+    let today = d("2026-10-15");
+
+    let inputs = fetch_inputs(&requirements(&ledger, today), today, &sources).await;
+
+    // BTC: 0.002 x 60 000 EUR x 4 = 480 PLN. Gold: 500 x 3.11 x 0.95 = 1477.25 PLN.
+    assert_eq!(
+        inputs.position_values,
+        BTreeMap::from([
+            ("BTC".into(), Some(dec!(480))),
+            (GOLD_COINS.into(), Some(dec!(1477.25))),
+        ])
+    );
+    let last: Vec<_> = inputs
+        .last_known
+        .iter()
+        .map(|(asset, l)| (asset.as_str(), l.provider, l.fetched_at))
+        .collect();
+    assert_eq!(
+        last,
+        [
+            ("BTC", "kraken", Some(fetched)),
+            (GOLD_COINS, "nbp", Some(fetched)),
+        ]
+    );
+    let r = report(&ledger, today, &inputs).unwrap();
+    assert_eq!(r.last_known, inputs.last_known);
+
+    // A past day is never valued at an older close: Kraken's failure leaves 13 Oct without BTC.
+    let yesterday = fetch_inputs(
+        &requirements(&ledger, d("2026-10-13")),
+        d("2026-10-13"),
+        &sources,
+    )
+    .await;
+    assert_eq!(yesterday.position_values.get("BTC"), Some(&None));
+    assert!(yesterday.last_known.is_empty());
 }

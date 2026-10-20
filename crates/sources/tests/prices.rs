@@ -6,8 +6,8 @@ use portfolio_db::open_in_memory;
 use portfolio_sources::alphavantage::AlphaVantageClient;
 use portfolio_sources::nbp::NbpClient;
 use portfolio_sources::prices::{
-    ALPHAVANTAGE_WEEKLY_SOURCE, BTC, Clock, Instrument, PriceError, VWCE, WeeklyBackfill,
-    backfill_weekly, close_on_day, value_in_pln,
+    ALPHAVANTAGE_WEEKLY_SOURCE, BTC, Clock, Instrument, LastKnown, PriceError, VWCE,
+    WeeklyBackfill, backfill_weekly, close_on_day, close_or_last_known, value_in_pln,
 };
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
@@ -572,4 +572,87 @@ async fn an_earlier_close_still_answers_a_holiday_inside_one_series() {
 
     assert_eq!((quote.date, quote.close), (d("2026-01-09"), dec("100")));
     assert!(s.server.received_requests().await.unwrap().is_empty());
+}
+
+/// Alpha Vantage answers every request with a server error.
+async fn provider_down(s: &Setup) {
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&s.server)
+        .await;
+}
+
+#[tokio::test]
+async fn today_falls_back_to_the_last_stored_close_while_the_provider_is_down() {
+    // Closes for Tue 13 and Wed 14 Oct, the last fetched at 20:00 on the 14th. On Thu 15 Oct at
+    // 12:00 that fetch is 16 h old, so the series is asked for again, and the request fails.
+    let s = setup().await;
+    store_closes(
+        &s.pool,
+        &[
+            ("2026-10-13", "120", "2026-10-13T20:00:00Z"),
+            ("2026-10-14", "122", "2026-10-14T20:00:00Z"),
+        ],
+    )
+    .await;
+    provider_down(&s).await;
+    let clock = clock("2026-10-15T12:00:00Z");
+
+    // close_on_day itself still reports the failure.
+    let plain = close_on_day(&s.pool, &s.av, &VWCE, d("2026-10-15"), clock).await;
+    assert!(matches!(plain, Err(PriceError::Provider(_))), "{plain:?}");
+
+    let (quote, last) = close_or_last_known(&s.pool, &s.av, &VWCE, d("2026-10-15"), clock)
+        .await
+        .unwrap();
+    assert_eq!((quote.date, quote.close), (d("2026-10-14"), dec("122")));
+    let LastKnown {
+        provider,
+        fetched_at,
+        error,
+    } = last.unwrap();
+    assert_eq!(provider, "alphavantage");
+    assert_eq!(fetched_at, Some("2026-10-14T20:00:00Z".parse().unwrap()));
+    assert!(error.contains("500"), "{error}");
+}
+
+#[tokio::test]
+async fn only_today_falls_back_and_only_to_a_close_within_the_gap_limit() {
+    let s = setup().await;
+    store_closes(&s.pool, &[("2026-10-01", "118", "2026-10-01T20:00:00Z")]).await;
+    provider_down(&s).await;
+
+    // 15 Oct: the 1 Oct close is 14 days old, past MAX_GAP_DAYS (10): no value at all.
+    let stale = clock("2026-10-15T12:00:00Z");
+    let result = close_or_last_known(&s.pool, &s.av, &VWCE, d("2026-10-15"), stale).await;
+    assert!(matches!(result, Err(PriceError::Provider(_))), "{result:?}");
+
+    // 9 Oct is within reach of the 1 Oct close, but it is not today: history never takes an
+    // older close because a provider is down.
+    let later = clock("2026-10-10T12:00:00Z");
+    let result = close_or_last_known(&s.pool, &s.av, &VWCE, d("2026-10-09"), later).await;
+    assert!(matches!(result, Err(PriceError::Provider(_))), "{result:?}");
+    // On 9 Oct itself it does: 8 days old.
+    let today = clock("2026-10-09T12:00:00Z");
+    let (quote, last) = close_or_last_known(&s.pool, &s.av, &VWCE, d("2026-10-09"), today)
+        .await
+        .unwrap();
+    assert_eq!(quote.date, d("2026-10-01"));
+    assert!(last.is_some());
+}
+
+#[tokio::test]
+async fn a_working_provider_gives_no_last_known_note() {
+    let s = setup().await;
+    serve_av(&s, "IBM", IBM_DAILY, 1).await;
+    let (quote, last) = close_or_last_known(
+        &s.pool,
+        &s.av,
+        &IBM,
+        d("2026-10-15"),
+        clock("2026-10-15T09:00:00Z"),
+    )
+    .await
+    .unwrap();
+    assert_eq!((quote.date, last), (d("2026-10-14"), None));
 }
