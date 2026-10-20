@@ -218,11 +218,10 @@ impl Pnl {
         let gain = value - paid;
         Pnl {
             delta: format::delta_pln(gain),
-            percent: if paid.is_zero() {
-                "—".into()
-            } else {
-                format::signed_percent(gain / paid)
-            },
+            // No share of nothing paid; a huge gain over a grosz paid is past `Decimal`.
+            percent: gain
+                .checked_div(paid)
+                .map_or("—".into(), format::signed_percent),
         }
     }
 }
@@ -289,25 +288,35 @@ pub struct Summary {
 }
 
 impl Summary {
+    /// A sum past `Decimal` (only rows stored before the form had caps can get there) shows "—".
     pub fn new(coins: &[Coin], values: &[Option<(Decimal, ValuationBasis)>]) -> Summary {
-        let paid: Decimal = coins.iter().map(|c| c.purchase_price_pln).sum();
-        let value: Option<Decimal> = values.iter().map(|v| v.map(|(v, _)| v)).sum();
-        let grams: Decimal = coins.iter().map(|c| c.fine_weight_g).sum();
+        let paid = checked_sum(coins.iter().map(|c| Some(c.purchase_price_pln)));
+        let value = checked_sum(values.iter().map(|v| v.map(|(v, _)| v)));
+        let grams = checked_sum(coins.iter().map(|c| Some(c.fine_weight_g)));
         let count = coins.len();
         Summary {
             value: value.map_or("—".into(), format::pln),
-            paid: format::pln(paid),
+            paid: paid.map_or("—".into(), format::pln),
             pnl: value
+                .zip(paid)
                 .filter(|_| count > 0)
-                .map(|value| Pnl::new(value, paid)),
+                .map(|(value, paid)| Pnl::new(value, paid)),
             holding: format!(
-                "{count} {} · {}{}oz",
+                "{count} {}{}",
                 if count == 1 { "coin" } else { "coins" },
-                ounces_text(grams),
-                format::NBSP
+                grams.map_or(String::new(), |g| format!(
+                    " · {}{}oz",
+                    ounces_text(g),
+                    format::NBSP
+                ))
             ),
         }
     }
+}
+
+/// The sum, or None when any term is None or the sum is past `Decimal`.
+fn checked_sum(mut terms: impl Iterator<Item = Option<Decimal>>) -> Option<Decimal> {
+    terms.try_fold(Decimal::ZERO, |sum, term| sum.checked_add(term?))
 }
 
 /// The header's note on how coins are valued: "Valued at NBP spot × 0,95 · 1 181,80 zł per

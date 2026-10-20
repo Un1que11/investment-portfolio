@@ -16,6 +16,9 @@ pub enum GoldError {
     InvalidBuybackFactor(Decimal),
     /// Weights and prices must be positive.
     NonPositive(&'static str, Decimal),
+    /// Price x weight (x the factor) is past what `Decimal` holds: a weight or price far beyond
+    /// any coin.
+    Overflow,
 }
 
 impl std::fmt::Display for GoldError {
@@ -28,6 +31,7 @@ impl std::fmt::Display for GoldError {
                 )
             }
             GoldError::NonPositive(what, x) => write!(f, "{what} must be positive, got {x}"),
+            GoldError::Overflow => write!(f, "coin value is too large to compute"),
         }
     }
 }
@@ -70,7 +74,9 @@ pub fn value_coin(
     if buyback_factor <= Decimal::ZERO || buyback_factor > MAX_BUYBACK_FACTOR {
         return Err(GoldError::InvalidBuybackFactor(buyback_factor));
     }
-    let melt = price_per_gram_pln * fine_weight_grams;
+    let melt = price_per_gram_pln
+        .checked_mul(fine_weight_grams)
+        .ok_or(GoldError::Overflow)?;
     match manual_quote_pln {
         Some(quote) if quote <= Decimal::ZERO => Err(GoldError::NonPositive("manual quote", quote)),
         Some(quote) => Ok(CoinValuation {
@@ -80,7 +86,9 @@ pub fn value_coin(
         }),
         None => Ok(CoinValuation {
             melt_value_pln: melt,
-            value_pln: melt * buyback_factor,
+            value_pln: melt
+                .checked_mul(buyback_factor)
+                .ok_or(GoldError::Overflow)?,
             basis: ValuationBasis::NbpPrice,
         }),
     }
@@ -136,5 +144,26 @@ mod tests {
         assert!(value_coin(dec!(527), w, dec!(0.95), Some(dec!(0))).is_err());
         // The upper bound itself is allowed.
         assert!(value_coin(dec!(527), w, dec!(1.5), None).is_ok());
+    }
+
+    #[test]
+    fn a_value_past_decimal_is_an_error_not_a_panic() {
+        // Decimal holds up to about 7.9 x 10^28: 400 x 10^27 is past it.
+        let huge = Decimal::from_i128_with_scale(10_i128.pow(27), 0);
+        assert_eq!(
+            value_coin(dec!(400), huge, dec!(0.95), None),
+            Err(GoldError::Overflow)
+        );
+        // 7 x 10^28 g x 1 zł/g fits as melt value, but x 1.5 does not.
+        let near_max = Decimal::from_i128_with_scale(7 * 10_i128.pow(28), 0);
+        assert_eq!(
+            value_coin(dec!(1), near_max, dec!(1.5), None),
+            Err(GoldError::Overflow)
+        );
+        // With a dealer quote the melt value is still computed, so it fails the same way.
+        assert_eq!(
+            value_coin(dec!(400), huge, dec!(0.95), Some(dec!(1300))),
+            Err(GoldError::Overflow)
+        );
     }
 }

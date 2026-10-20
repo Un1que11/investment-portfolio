@@ -385,3 +385,27 @@ async fn with_nothing_held_the_plan_still_works() {
         "{page}"
     );
 }
+
+#[tokio::test]
+async fn a_huge_coin_stored_before_the_gold_caps_leaves_the_pages_up() {
+    // 10^27 g x 400 zł/g is past Decimal. Such a row can only predate the Gold form's caps;
+    // its value is missing, as without a price, instead of a panic on every page.
+    let pool = open_in_memory().await.unwrap();
+    prices(&pool, true).await;
+    let coin = NewCoin {
+        label: None,
+        purchased_on: d("2026-05-12"),
+        purchase_price_pln: dec("1000"),
+        fine_weight_g: dec("1000000000000000000000000000"),
+        manual_quote_pln: None,
+    };
+    add_coin(&pool, &coin).await.unwrap();
+    let router = router(pool, false);
+    let overview = body(&router, "/", false).await;
+    assert!(overview.contains("—"), "{overview}");
+    let allocation = body(&router, "/allocation", false).await;
+    assert!(
+        allocation.contains("No price for GOLD_COINS right now"),
+        "{allocation}"
+    );
+}
