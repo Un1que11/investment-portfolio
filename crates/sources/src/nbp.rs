@@ -181,6 +181,25 @@ impl NbpClient {
         }
     }
 
+    /// Gold prices (PLN per gram) published in `from..=to`, oldest first; empty when there is
+    /// none. NBP allows at most 367 days per request and refuses a `to` in the future.
+    pub async fn gold_range(
+        &self,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<Vec<DailyClose>, NbpError> {
+        let url = format!(
+            "{}/cenyzlota/{}/{}/",
+            self.base_url,
+            from.format("%Y-%m-%d"),
+            to.format("%Y-%m-%d"),
+        );
+        match self.get(&url).await? {
+            Some(body) => parse_gold(&body),
+            None => Ok(Vec::new()),
+        }
+    }
+
     /// GET with JSON accepted; `None` for 404 (NBP's "no data"), an error for other failures.
     async fn get(&self, url: &str) -> Result<Option<String>, NbpError> {
         let response = self
@@ -208,11 +227,28 @@ impl DailySource for NbpClient {
     type Error = NbpError;
 
     async fn daily_closes(&self, symbol: &str) -> Result<Vec<DailyClose>, NbpError> {
-        if symbol != GOLD_SYMBOL {
-            return Err(NbpError::Parse(format!(
-                "NBP only provides a daily price for {GOLD_SYMBOL}, not {symbol}"
-            )));
-        }
+        gold_only(symbol)?;
         self.gold_last(GOLD_LAST_COUNT).await
+    }
+
+    /// Older gold prices: the recent window holds only the last [`GOLD_LAST_COUNT`] quotes.
+    async fn closes_between(
+        &self,
+        symbol: &str,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> Result<Option<Vec<DailyClose>>, NbpError> {
+        gold_only(symbol)?;
+        self.gold_range(from, to).await.map(Some)
+    }
+}
+
+fn gold_only(symbol: &str) -> Result<(), NbpError> {
+    if symbol == GOLD_SYMBOL {
+        Ok(())
+    } else {
+        Err(NbpError::Parse(format!(
+            "NBP only provides a daily price for {GOLD_SYMBOL}, not {symbol}"
+        )))
     }
 }
