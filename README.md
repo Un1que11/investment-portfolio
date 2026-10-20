@@ -4,6 +4,28 @@ A personal investment dashboard. It runs locally on macOS and shows the whole po
 invested vs current value, P&L, XIRR, each asset's contribution, and drift from the target
 allocation. See `CLAUDE.md` for the full spec and `BACKLOG.md` for the roadmap.
 
+## Quick start (macOS)
+
+```bash
+git clone https://github.com/Un1que11/investment-portfolio && cd investment-portfolio
+./setup.sh
+```
+
+`setup.sh` does everything and is safe to re-run (e.g. after `git pull`): installs Rust if it is
+missing, fills in `.env` (asks only for keys that are still empty; Telegram settings are copied
+from `../f1-brief/.env` when that checkout exists), builds the release binaries, runs the first
+sync, installs two launchd agents — `com.portfolio.web` keeps the dashboard running at
+<http://127.0.0.1:3000> (starts at login, restarts if it stops) and `com.portfolio.sync` runs the
+daily sync at 22:30 — and opens the dashboard. Then import your XTB history on `/import` and add
+gold coins on `/gold`.
+
+```bash
+./setup.sh status      # are both agents running, does the dashboard answer
+./setup.sh uninstall   # stop and remove both agents (portfolio.db and .env are kept)
+```
+
+Logs: `~/Library/Logs/portfolio-web.log` and `~/Library/Logs/portfolio-sync.log`.
+
 ## Requirements
 
 - Rust stable (install via [rustup](https://rustup.rs)); the minimum supported version is set

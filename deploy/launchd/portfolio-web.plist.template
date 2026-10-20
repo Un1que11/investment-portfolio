@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent that keeps the dashboard (portfolio-web) running at http://127.0.0.1:3000.
+  Do not load this file directly: setup.sh replaces __REPO__ and __LOG__ and copies the result
+  to ~/Library/LaunchAgents.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.portfolio.web</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__REPO__/target/release/portfolio-web</string>
+    </array>
+
+    <!-- config.toml, .env and the default sqlite://portfolio.db are read from here. -->
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <!-- Start at login and restart if it exits, at most every 30 s. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
+    <key>StandardOutPath</key>
+    <string>__LOG__</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG__</string>
+</dict>
+</plist>
