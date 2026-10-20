@@ -1,11 +1,124 @@
-//! Background sync: daily price and value snapshots. Scheduled by launchd (see BACKLOG P25).
+//! Background sync, scheduled daily by launchd (see README, "Daily sync"): Kraken ledger,
+//! prices, and the day's per-asset snapshot. Prints counts and asset names, never amounts, since
+//! its output goes to a log file. Exits with a failure code when any step failed, so a broken
+//! run shows up in the log and in `launchctl print`.
 
-use portfolio_core::AssetClass;
+use std::process::ExitCode;
+use std::time::Duration;
 
-fn main() {
-    let classes: Vec<&str> = AssetClass::ALL.iter().map(|c| c.as_str()).collect();
+use chrono::{Local, Utc};
+use portfolio_core::config::Config;
+use portfolio_sources::alphavantage::AlphaVantageClient;
+use portfolio_sources::kraken::KrakenClient;
+use portfolio_sources::kraken_ledger;
+use portfolio_sources::kraken_private::{API_KEY_ENV, KrakenPrivateClient, PRIVATE_KEY_ENV};
+use portfolio_sources::nbp::NbpClient;
+use portfolio_sources::prices::Clock;
+use portfolio_sources::valuation::{Sources, portfolio_on};
+use portfolio_sync::{Command, Options, USAGE, parse_args, write_snapshot};
+
+#[tokio::main]
+async fn main() -> ExitCode {
+    let _ = dotenvy::dotenv();
+    let today = Local::now().date_naive();
+    let options = match parse_args(std::env::args().skip(1), today) {
+        Ok(Command::Run(o)) => o,
+        Ok(Command::Help) => {
+            println!("{USAGE}");
+            return ExitCode::SUCCESS;
+        }
+        Err(e) => {
+            eprintln!("error: {e}\n\n{USAGE}");
+            return ExitCode::from(2);
+        }
+    };
     println!(
-        "portfolio-sync: nothing to sync yet (asset classes: {})",
-        classes.join(", ")
+        "portfolio-sync {} (snapshot for {})",
+        Local::now().format("%Y-%m-%d %H:%M:%S"),
+        options.date
     );
+    match run(options).await {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::FAILURE,
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Ok(false) when a step failed but the run could go on; Err when it could not start.
+async fn run(options: Options) -> Result<bool, Box<dyn std::error::Error>> {
+    let path = std::env::var("PORTFOLIO_CONFIG").unwrap_or_else(|_| "config.toml".to_owned());
+    let text =
+        std::fs::read_to_string(&path).map_err(|e| format!("cannot read config {path}: {e}"))?;
+    let config = Config::from_toml(&text)?;
+    let db_url =
+        std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned());
+    let pool = portfolio_db::open(&db_url).await?;
+    let mut ok = true;
+
+    if !options.kraken {
+        println!("kraken: skipped (--skip-kraken)");
+    } else if !kraken_configured() {
+        println!("kraken: skipped ({API_KEY_ENV} and {PRIVATE_KEY_ENV} not set)");
+    } else {
+        let result = match KrakenPrivateClient::from_env() {
+            Ok(client) => kraken_ledger::sync(&pool, &client, Duration::from_secs(3))
+                .await
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        match result {
+            Ok(s) => {
+                println!(
+                    "kraken: {} ledger entries fetched ({} new), {} transactions written",
+                    s.fetched, s.new_entries, s.transactions_written
+                );
+                for u in &s.unsupported {
+                    println!("  not supported yet: {}", u.entries.join(", "));
+                }
+            }
+            Err(e) => {
+                // Still snapshot: the stored ledger is only missing the newest entries.
+                eprintln!("kraken: sync failed: {e}");
+                ok = false;
+            }
+        }
+    }
+
+    let nbp = NbpClient::new()?;
+    let kraken = KrakenClient::new()?;
+    let av = AlphaVantageClient::from_env().ok();
+    let sources = Sources {
+        pool: &pool,
+        nbp: &nbp,
+        kraken: &kraken,
+        alphavantage: av.as_ref(),
+        clock: Clock {
+            now: Utc::now(),
+            today: Local::now().date_naive(),
+        },
+        gold_buyback_factor: config.gold_buyback_factor(),
+    };
+    let report = portfolio_on(options.date, &sources).await?;
+    for p in &report.problems {
+        println!("  note: {p}");
+    }
+    match write_snapshot(&pool, &report).await {
+        Ok(n) => println!("snapshot {}: {n} assets written", options.date),
+        Err(e) => {
+            eprintln!("snapshot {}: {e}", options.date);
+            ok = false;
+        }
+    }
+    Ok(ok)
+}
+
+/// At least one Kraken key variable is set; a half-configured pair is reported as an error by
+/// the client rather than skipped.
+fn kraken_configured() -> bool {
+    [API_KEY_ENV, PRIVATE_KEY_ENV]
+        .iter()
+        .any(|v| std::env::var(v).is_ok_and(|s| !s.trim().is_empty()))
 }

@@ -1494,7 +1494,15 @@ dependencies = [
 name = "portfolio-sync"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "dotenvy",
  "portfolio-core",
+ "portfolio-db",
+ "portfolio-sources",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "sqlx",
+ "tokio",
 ]
 
 [[package]]
