@@ -123,6 +123,10 @@ pub struct Mapped {
 
 struct Entry<'a> {
     raw: &'a RawLedgerEntry,
+    /// Unix time as Kraken gives it, with the fraction: the legs of one bundle buy fall within
+    /// the same second, and ledger ids are random, so only this orders them.
+    unix: Decimal,
+    /// `unix` cut to whole seconds, as stored.
     time: NaiveDateTime,
     amount: Decimal,
     fee: Decimal,
@@ -134,6 +138,7 @@ fn parse_entry(e: &RawLedgerEntry) -> Result<Entry<'_>, SyncError> {
     let seconds = i64::try_from(time.trunc()).map_err(|_| bad("time"))?;
     Ok(Entry {
         raw: e,
+        unix: time,
         time: DateTime::from_timestamp(seconds, 0)
             .ok_or_else(|| bad("time"))?
             .naive_utc(),
@@ -306,8 +311,8 @@ pub fn map_entries(entries: &[RawLedgerEntry]) -> Result<Mapped, SyncError> {
     let mut mapped = Mapped::default();
     for (refid, mut group) in groups {
         group.sort_by(|a, b| {
-            a.time
-                .cmp(&b.time)
+            a.unix
+                .cmp(&b.unix)
                 .then(a.raw.ledger_id.cmp(&b.raw.ledger_id))
         });
         match map_group(&group) {
