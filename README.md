@@ -365,6 +365,9 @@ cargo run -p portfolio-sync -- summary --month 2026-09     # print a given month
 cargo run -p portfolio-sync -- summary --send              # send it now (once per month)
 ```
 
+Only a month that has ended can be sent: `--send` for the current month is refused, because a
+month is sent once and a partial summary would keep the whole month's from going out.
+
 ## Docker
 
 An alternative to running the binaries directly. The image (`Dockerfile`) holds both
