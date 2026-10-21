@@ -1,6 +1,6 @@
 //! External market data sources. Every request is a read-only GET to a public endpoint.
 
-use chrono::TimeDelta;
+use chrono::{NaiveDate, TimeDelta};
 use portfolio_core::price::DailyClose;
 
 pub mod alphavantage;
@@ -28,4 +28,16 @@ pub trait DailySource {
         &self,
         symbol: &str,
     ) -> impl Future<Output = Result<Vec<DailyClose>, Self::Error>> + Send;
+
+    /// Final daily closes with `from <= date <= to`, oldest first, from a provider that serves
+    /// any past range (`to` is never in the future). None, the default, when it serves only
+    /// the recent window of [`Self::daily_closes`].
+    fn closes_between(
+        &self,
+        _symbol: &str,
+        _from: NaiveDate,
+        _to: NaiveDate,
+    ) -> impl Future<Output = Result<Option<Vec<DailyClose>>, Self::Error>> + Send {
+        std::future::ready(Ok(None))
+    }
 }

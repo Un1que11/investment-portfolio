@@ -163,6 +163,113 @@ async fn christmas_gap_uses_last_quote_before_it() {
     assert_eq!(v.valuation.value_pln, dec("1583.4565"));
 }
 
+/// Mounts `/cenyzlota/{from}/{to}/` on `server`, answering `status` with `body`.
+async fn serve_range(server: &MockServer, from: &str, to: &str, status: u16, body: &str) {
+    Mock::given(method("GET"))
+        .and(path(format!("/cenyzlota/{from}/{to}/")))
+        .and(query_param("format", "json"))
+        .and(header("accept", "application/json"))
+        .respond_with(ResponseTemplate::new(status).set_body_string(body))
+        .expect(1)
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn day_before_the_last_90_quotes_is_fetched_as_a_range() {
+    // The recent window (oldest quote 2026-06-12) does not reach December 2025, so the day's
+    // surroundings are fetched once: 180 days either side of 2025-12-26. The mock answers with
+    // the real 15-31 Dec 2025 range response.
+    let server = serve_last_90(LAST_90, 1).await;
+    serve_range(&server, "2025-06-29", "2026-06-24", 200, XMAS_2025).await;
+    let pool = open_in_memory().await.unwrap();
+    let nbp = NbpClient::with_base_url(server.uri()).unwrap();
+    let clock = clock("2026-10-15T14:00:00Z");
+
+    let v = coin_value_on_day(
+        &pool,
+        &nbp,
+        d("2025-12-26"),
+        clock,
+        TENTH_OUNCE_GRAMS,
+        dec("1"),
+        None,
+    )
+    .await
+    .unwrap();
+
+    // No quotes 24-28 Dec 2025; 23 Dec: 509.15 * 3.11 = 1583.4565 (by hand).
+    assert_eq!(v.price_per_gram.date, d("2025-12-23"));
+    assert_eq!(v.valuation.value_pln, dec("1583.4565"));
+
+    // Another day of the fetched range comes from the cache (each mock expects one request).
+    let v = coin_value_on_day(
+        &pool,
+        &nbp,
+        d("2025-12-17"),
+        clock,
+        TENTH_OUNCE_GRAMS,
+        dec("1"),
+        None,
+    )
+    .await
+    .unwrap();
+    // 494.43 * 3.11 = 1537.6773 (by hand).
+    assert_eq!(v.valuation.value_pln, dec("1537.6773"));
+}
+
+#[tokio::test]
+async fn range_ends_today_and_no_quotes_is_still_no_price() {
+    // 2026-06-01 + 180 days is in the future, which NBP refuses: the range ends today. A 404
+    // (no quotes in the range) leaves the day without a price.
+    let server = serve_last_90(LAST_90, 1).await;
+    serve_range(
+        &server,
+        "2025-12-03",
+        "2026-10-15",
+        404,
+        "404 NotFound - Not Found",
+    )
+    .await;
+    let pool = open_in_memory().await.unwrap();
+    let nbp = NbpClient::with_base_url(server.uri()).unwrap();
+
+    let err = coin_value_on_day(
+        &pool,
+        &nbp,
+        d("2026-06-01"),
+        clock("2026-10-15T14:00:00Z"),
+        TENTH_OUNCE_GRAMS,
+        dec("1"),
+        None,
+    )
+    .await
+    .unwrap_err();
+
+    assert!(
+        matches!(
+            err,
+            GoldValuationError::Price(PriceError::NoPrice("XAU_G", day)) if day == d("2026-06-01")
+        ),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn gold_range_requests_the_dates_given() {
+    let server = MockServer::start().await;
+    serve_range(&server, "2025-12-15", "2025-12-31", 200, XMAS_2025).await;
+    let nbp = NbpClient::with_base_url(server.uri()).unwrap();
+
+    let closes = nbp
+        .gold_range(d("2025-12-15"), d("2025-12-31"))
+        .await
+        .unwrap();
+
+    assert_eq!(closes.len(), 10);
+    assert_eq!(closes[0].date, d("2025-12-15"));
+}
+
 #[tokio::test]
 async fn manual_quote_overrides_value_but_keeps_melt_value() {
     let server = serve_last_90(LAST_90, 1).await;

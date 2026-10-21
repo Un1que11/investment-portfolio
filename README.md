@@ -4,6 +4,28 @@ A personal investment dashboard. It runs locally on macOS and shows the whole po
 invested vs current value, P&L, XIRR, each asset's contribution, and drift from the target
 allocation. See `CLAUDE.md` for the full spec and `BACKLOG.md` for the roadmap.
 
+## Quick start (macOS)
+
+```bash
+git clone https://github.com/Un1que11/investment-portfolio && cd investment-portfolio
+./setup.sh
+```
+
+`setup.sh` does everything and is safe to re-run (e.g. after `git pull`): installs Rust if it is
+missing, fills in `.env` (asks only for keys that are still empty; Telegram settings are copied
+from `../f1-brief/.env` when that checkout exists), builds the release binaries, runs the first
+sync, installs two launchd agents — `com.portfolio.web` keeps the dashboard running at
+<http://127.0.0.1:3000> (starts at login, restarts if it stops) and `com.portfolio.sync` runs the
+daily sync at 22:30 — and opens the dashboard. Then import your XTB history on `/import` and add
+gold coins on `/gold`.
+
+```bash
+./setup.sh status      # are both agents running, does the dashboard answer
+./setup.sh uninstall   # stop and remove both agents (portfolio.db and .env are kept)
+```
+
+Logs: `~/Library/Logs/portfolio-web.log` and `~/Library/Logs/portfolio-sync.log`.
+
 ## Requirements
 
 - Rust stable (install via [rustup](https://rustup.rs)); the minimum supported version is set
@@ -345,6 +367,49 @@ cargo run -p portfolio-sync -- summary --send              # send it now (once p
 
 Only a month that has ended can be sent: `--send` for the current month is refused, because a
 month is sent once and a partial summary would keep the whole month's from going out.
+
+## Docker
+
+An alternative to running the binaries directly. The image (`Dockerfile`) holds both
+`portfolio-web` and `portfolio-sync`, runs them as an unprivileged user (uid 10001) with
+`TZ=Europe/Warsaw`, and holds no secrets and no data: `.env`, databases, XTB exports and
+`config.toml` are kept out of the build context (`.dockerignore`) and passed in at run time.
+
+```bash
+docker build -t portfolio .        # native arch: linux/arm64 on Apple Silicon
+```
+
+Both architectures at once (amd64 is emulated on a Mac, so it is much slower):
+
+```bash
+docker buildx build --platform linux/arm64,linux/amd64 -t portfolio .
+```
+
+Run the dashboard, with the database on a named volume and the config mounted read-only:
+
+```bash
+docker run -d --name portfolio-web \
+  -p 127.0.0.1:3000:3000 \
+  -v portfolio-data:/data \
+  -v "$PWD/config.toml:/config/config.toml:ro" \
+  --env-file .env \
+  portfolio
+```
+
+Always publish the port on `127.0.0.1` as above: inside the container the server listens on
+`0.0.0.0:3000` (`PORTFOLIO_ADDR`), so `-p 3000:3000` would open the dashboard to the network.
+Run the sync for a day with the same volume, config and `.env`:
+
+```bash
+docker run --rm -v portfolio-data:/data -v "$PWD/config.toml:/config/config.toml:ro" \
+  --env-file .env portfolio portfolio-sync --date 2026-10-20
+```
+
+Defaults inside the image: database `sqlite:///data/portfolio.db` (`PORTFOLIO_DB_URL`), config
+`/config/config.toml` (`PORTFOLIO_CONFIG`). Dependencies are compiled in their own cached layer
+(cargo-chef), so after a code change only the workspace crates are rebuilt. The Rust version is
+the `RUST_VERSION` build argument. `.github/workflows/docker.yml` builds the amd64 image and
+smoke-tests it on pull requests that touch what goes into it.
 
 ## Checks
 

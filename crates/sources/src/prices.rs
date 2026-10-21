@@ -188,8 +188,10 @@ async fn gap_after(
 /// Answered from the cache when it can be: an exact close, or an earlier one when a close within
 /// `MAX_GAP_DAYS` after it is stored too (so the gap is known to be a market holiday). Otherwise
 /// the provider's recent series is fetched and cached, at most once per the provider's
-/// `MIN_REFETCH_INTERVAL`. An earlier close is never used across a longer gap in the cache: the
-/// day is then [`PriceError::NoPrice`] (for VWCE that triggers the weekly backfill).
+/// `MIN_REFETCH_INTERVAL`. A past day the recent series does not answer is fetched as a range
+/// around it when the provider serves past ranges (NBP gold). An earlier close is never used
+/// across a longer gap in the cache: the day is then [`PriceError::NoPrice`] (for VWCE that
+/// triggers the weekly backfill).
 pub async fn close_on_day<S: DailySource>(
     pool: &SqlitePool,
     provider: &S,
@@ -227,10 +229,69 @@ pub async fn close_on_day<S: DailySource>(
     }
 
     refresh_daily(pool, provider, instrument, asset_id, clock).await?;
-    match cached_close(pool, asset_id, day).await? {
-        Some(quote) if !gap_after(pool, asset_id, day, quote.date).await? => Ok(quote),
-        _ => Err(PriceError::NoPrice(instrument.symbol, day)),
+    if let Some(quote) = answer_from_cache(pool, asset_id, day).await? {
+        return Ok(quote);
     }
+    if day < clock.today
+        && backfill_around(pool, provider, instrument, asset_id, day, clock).await?
+        && let Some(quote) = answer_from_cache(pool, asset_id, day).await?
+    {
+        return Ok(quote);
+    }
+    Err(PriceError::NoPrice(instrument.symbol, day))
+}
+
+/// The stored close that answers `day`, unless the cache has a gap after it (see [`gap_after`]).
+async fn answer_from_cache(
+    pool: &SqlitePool,
+    asset_id: i64,
+    day: NaiveDate,
+) -> Result<Option<PriceQuote>, sqlx::Error> {
+    match cached_close(pool, asset_id, day).await? {
+        Some(quote) if !gap_after(pool, asset_id, day, quote.date).await? => Ok(Some(quote)),
+        _ => Ok(None),
+    }
+}
+
+/// Days fetched on each side of a past day outside the recent window. 2 x 180 + 1 days stays
+/// within NBP's 367-day limit per request, and a series of days in either order costs about
+/// one request per half year.
+pub const BACKFILL_DAYS_EACH_SIDE: u64 = 180;
+
+/// For a provider that serves past ranges ([`DailySource::closes_between`]), stores the closes
+/// within [`BACKFILL_DAYS_EACH_SIDE`] of `day` (up to today) that are not stored yet. False when
+/// the provider has no such endpoint.
+///
+/// They are the provider's own final quotes, stored under its name. That counts as a fetch for
+/// [`refresh_daily`]'s throttle, which [`close_on_day`] has just run, so the next refresh of
+/// recent closes moves by less than `MIN_REFETCH_INTERVAL`.
+async fn backfill_around<S: DailySource>(
+    pool: &SqlitePool,
+    provider: &S,
+    instrument: &Instrument,
+    asset_id: i64,
+    day: NaiveDate,
+    clock: Clock,
+) -> Result<bool, PriceError> {
+    let from = day - Days::new(BACKFILL_DAYS_EACH_SIDE);
+    let to = (day + Days::new(BACKFILL_DAYS_EACH_SIDE)).min(clock.today);
+    let Some(closes) = provider
+        .closes_between(instrument.provider_symbol, from, to)
+        .await
+        .map_err(|e| PriceError::Provider(Box::new(e)))?
+    else {
+        return Ok(false);
+    };
+    cache::insert_missing_closes(
+        pool,
+        asset_id,
+        instrument.currency,
+        S::NAME,
+        &closes,
+        clock.now,
+    )
+    .await?;
+    Ok(true)
 }
 
 /// A stored close that stands in for today's because the provider failed to give a fresh one.

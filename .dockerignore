@@ -1,0 +1,38 @@
+# Build context for the Dockerfile. The image must hold no secrets and no data, so anything that
+# could carry either stays out, along with build output and files the build does not read.
+
+# Build output (the image builds its own).
+target/
+
+# Secrets: API keys and the Telegram token live only in .env, passed at run time.
+.env
+.env.*
+!.env.example
+
+# Data: the database, XTB exports and backups.
+*.db
+*.db-*
+*.sqlite*
+exports/
+backups/
+*.xlsx
+
+# config.toml is mounted at run time (/config/config.toml), so the image never carries a copy that
+# goes stale. Only the unit tests embed it, and tests are not part of the image.
+config.toml
+crates/*/tests/
+crates/*/examples/
+
+# Not read by the build. design/tokens.css is (it is embedded into portfolio-web), so only the
+# large reference files are left out.
+.git/
+.github/
+.DS_Store
+design/screens/
+design/*.pdf
+design/portfel-interactive.html
+docs/
+deploy/
+tools/
+Dockerfile
+.dockerignore

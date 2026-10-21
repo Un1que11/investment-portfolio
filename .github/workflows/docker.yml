@@ -1,0 +1,86 @@
+name: Docker
+
+# Builds the image (BACKLOG P35) and smoke-tests it: the web server answers /health as a
+# non-root user, and portfolio-sync starts. Only when something that goes into the image
+# changes, since a release build takes several minutes. linux/amd64 only: GitHub's hosted
+# runners are x86, and an emulated arm64 Rust build would take far longer; arm64 is built
+# natively on the Mac (README, "Docker").
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - Cargo.toml
+      - Cargo.lock
+      - crates/**
+      - migrations/**
+      - design/tokens.css
+      - .github/workflows/docker.yml
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - Cargo.toml
+      - Cargo.lock
+      - crates/**
+      - migrations/**
+      - design/tokens.css
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: build + smoke test (linux/amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: portfolio:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image holds no secrets, data or config
+        run: |
+          set -eu
+          # /data and /config are only mount points; no .env may be anywhere.
+          out=$(docker run --rm --entrypoint /bin/sh portfolio:ci -c \
+            'find /data /config -mindepth 1; find / -xdev -name ".env" 2>/dev/null; true')
+          if [ -n "$out" ]; then echo "unexpected files in the image:"; echo "$out"; exit 1; fi
+
+      - name: Runs as non-root in Europe/Warsaw
+        run: |
+          set -eu
+          test "$(docker run --rm --entrypoint id portfolio:ci -u)" = 10001
+          test "$(docker run --rm --entrypoint date portfolio:ci +%Z | tr -d '\n')" != UTC
+
+      - name: portfolio-web answers /health
+        run: |
+          set -eu
+          docker run -d --name web -p 127.0.0.1:3000:3000 \
+            -v "$PWD/config.toml:/config/config.toml:ro" portfolio:ci
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/health; then echo; docker rm -f web; exit 0; fi
+            sleep 1
+          done
+          docker logs web
+          exit 1
+
+      - name: portfolio-sync starts
+        run: docker run --rm portfolio:ci portfolio-sync --help
