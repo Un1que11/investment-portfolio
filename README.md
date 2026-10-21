@@ -343,6 +343,49 @@ cargo run -p portfolio-sync -- summary --month 2026-09     # print a given month
 cargo run -p portfolio-sync -- summary --send              # send it now (once per month)
 ```
 
+## Docker
+
+An alternative to running the binaries directly. The image (`Dockerfile`) holds both
+`portfolio-web` and `portfolio-sync`, runs them as an unprivileged user (uid 10001) with
+`TZ=Europe/Warsaw`, and holds no secrets and no data: `.env`, databases, XTB exports and
+`config.toml` are kept out of the build context (`.dockerignore`) and passed in at run time.
+
+```bash
+docker build -t portfolio .        # native arch: linux/arm64 on Apple Silicon
+```
+
+Both architectures at once (amd64 is emulated on a Mac, so it is much slower):
+
+```bash
+docker buildx build --platform linux/arm64,linux/amd64 -t portfolio .
+```
+
+Run the dashboard, with the database on a named volume and the config mounted read-only:
+
+```bash
+docker run -d --name portfolio-web \
+  -p 127.0.0.1:3000:3000 \
+  -v portfolio-data:/data \
+  -v "$PWD/config.toml:/config/config.toml:ro" \
+  --env-file .env \
+  portfolio
+```
+
+Always publish the port on `127.0.0.1` as above: inside the container the server listens on
+`0.0.0.0:3000` (`PORTFOLIO_ADDR`), so `-p 3000:3000` would open the dashboard to the network.
+Run the sync for a day with the same volume, config and `.env`:
+
+```bash
+docker run --rm -v portfolio-data:/data -v "$PWD/config.toml:/config/config.toml:ro" \
+  --env-file .env portfolio portfolio-sync --date 2026-10-20
+```
+
+Defaults inside the image: database `sqlite:///data/portfolio.db` (`PORTFOLIO_DB_URL`), config
+`/config/config.toml` (`PORTFOLIO_CONFIG`). Dependencies are compiled in their own cached layer
+(cargo-chef), so after a code change only the workspace crates are rebuilt. The Rust version is
+the `RUST_VERSION` build argument. `.github/workflows/docker.yml` builds the amd64 image and
+smoke-tests it on pull requests that touch what goes into it.
+
 ## Checks
 
 These must all pass before a PR is opened:
