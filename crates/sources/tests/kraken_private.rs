@@ -212,6 +212,57 @@ fn mapping_covers_every_pattern() {
     );
 }
 
+/// Kraken ledger ids are random, so within the one second of a bundle buy they say nothing
+/// about the order of its legs: pairing must follow the sub-second time. The fixture's bundle
+/// buy (ETH 0.05 at .1 with the 120 EUR spend at .2, BTC 0.001 at .3 with the 60 EUR spend at
+/// .4) with its ids renamed so that sorting by id lists the receives ETH, BTC but the spends
+/// 60, 120, which would pair ETH with the 60 EUR spend.
+#[test]
+fn bundle_buy_legs_pair_by_sub_second_time_not_by_ledger_id() {
+    let mut entries: Vec<_> = parse_ledgers(PAGE2).unwrap().entries;
+    entries.retain(|e| e.refid == "RAAAAA-AAAAA-AAAAA4");
+    for e in &mut entries {
+        e.id = match e.id.as_str() {
+            "LAAAAA-AAAAA-AAAAA5" => "LAAAAA-ETHRC-VXXXX1", // receive ETH, .1
+            "LAAAAA-AAAAA-AAAAA6" => "LZZZZZ-SP120-VXXXX2", // spend 120 EUR, .2
+            "LAAAAA-AAAAA-AAAAA7" => "LBBBBB-BTCRC-VXXXX3", // receive BTC, .3
+            "LAAAAA-AAAAA-AAAAA8" => "LMMMMM-SP060-VXXXX4", // spend 60 EUR, .4
+            other => panic!("unexpected leg {other}"),
+        }
+        .to_owned();
+    }
+    let raw: Vec<_> = entries.into_iter().map(Into::into).collect();
+
+    let mapped = map_entries(&raw).unwrap();
+    let buy = |asset| {
+        mapped
+            .transactions
+            .iter()
+            .find(|t| t.kind == "buy" && t.asset == Some(asset))
+            .unwrap()
+    };
+    // 120 / 0.05 = 2400.00 EUR/ETH; 60 / 0.001 = 60000.00 EUR/BTC, as in the fixture's order.
+    assert_eq!(
+        (buy("ETH").amount, buy("ETH").unit_price),
+        (dec("120.0000"), Some(dec("2400.00")))
+    );
+    assert_eq!(
+        (buy("BTC").amount, buy("BTC").unit_price),
+        (dec("60.0000"), Some(dec("60000.00")))
+    );
+    // Each spend's fee goes with the asset bought with it.
+    let fee = |id: &str| {
+        let t = mapped
+            .transactions
+            .iter()
+            .find(|t| t.external_id == format!("kraken-{id}-fee"))
+            .unwrap();
+        (t.asset, t.amount)
+    };
+    assert_eq!(fee("LZZZZZ-SP120-VXXXX2"), (Some("ETH"), dec("1.8000")));
+    assert_eq!(fee("LMMMMM-SP060-VXXXX4"), (Some("BTC"), dec("0.9000")));
+}
+
 #[test]
 fn unbalanced_bundle_or_unpaired_buy_is_unsupported() {
     let mut entries: Vec<_> = parse_ledgers(PAGE1).unwrap().entries;
