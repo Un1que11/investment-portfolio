@@ -11,6 +11,7 @@ on:
     paths:
       - Dockerfile
       - .dockerignore
+      - compose.yaml
       - Cargo.toml
       - Cargo.lock
       - crates/**
@@ -22,6 +23,7 @@ on:
     paths:
       - Dockerfile
       - .dockerignore
+      - compose.yaml
       - Cargo.toml
       - Cargo.lock
       - crates/**
@@ -52,7 +54,10 @@ jobs:
           platforms: linux/amd64
           load: true
           push: false
-          tags: portfolio:ci
+          # `portfolio` is the tag compose.yaml uses, so the compose test runs this build.
+          tags: |
+            portfolio:ci
+            portfolio:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -84,3 +89,42 @@ jobs:
 
       - name: portfolio-sync starts
         run: docker run --rm portfolio:ci portfolio-sync --help
+
+      - name: supercronic and the crontab
+        run: docker run --rm portfolio:ci supercronic -test /etc/portfolio/crontab
+
+      - name: compose.yaml starts web healthy and the sync scheduler
+        run: |
+          set -eu
+          # Keys are not needed to start; an empty .env stands in for the real one.
+          touch .env
+          docker compose config --quiet
+          trap 'docker compose logs; docker compose down -v' EXIT
+          docker compose up -d --no-build --wait --wait-timeout 60
+          web=$(docker compose ps -q web)
+          sync=$(docker compose ps -q sync)
+          test "$(docker inspect -f '{{.State.Health.Status}}' "$web")" = healthy
+          curl -fsS http://127.0.0.1:3000/health; echo
+          # Published on loopback only.
+          test "$(docker compose port web 3000)" = 127.0.0.1:3000
+          # sync with no arguments is supercronic waiting for 22:30, not a one-off run.
+          top=$(docker compose top sync)
+          echo "$top"
+          case "$top" in *"supercronic /etc/portfolio/crontab"*) ;; *) exit 1 ;; esac
+          # Arguments go to portfolio-sync once.
+          help=$(docker compose run --rm sync --help)
+          case "$help" in *"usage: portfolio-sync"*) ;; *) echo "$help"; exit 1 ;; esac
+          # Hardening: read-only root, no capabilities, no new privileges; /data and /tmp writable.
+          if docker compose exec -T web sh -c 'touch /usr/local/bin/x' 2>/dev/null; then
+            echo "root filesystem is writable"; exit 1
+          fi
+          docker compose exec -T web sh -c 'touch /data/.w /tmp/.w && rm /data/.w /tmp/.w'
+          for id in "$web" "$sync"; do
+            test "$(docker inspect -f '{{.HostConfig.ReadonlyRootfs}}' "$id")" = true
+            test "$(docker inspect -f '{{.HostConfig.CapDrop}}' "$id")" = "[ALL]"
+            case "$(docker inspect -f '{{.HostConfig.SecurityOpt}}' "$id")" in
+              *no-new-privileges*) ;; *) exit 1 ;;
+            esac
+          done
+          # Memory, CPU and PIDs at idle, for the limits in compose.yaml.
+          docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}\t{{.PIDs}}'

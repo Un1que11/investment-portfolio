@@ -183,6 +183,30 @@ fn parse_form_limits_decimal_places_and_checks_dates() {
     );
 }
 
+/// `portfolio-web healthcheck` against the real router served on a port, and against a port
+/// nothing listens on.
+#[tokio::test]
+async fn healthcheck_probe_asks_the_running_server() {
+    use portfolio_web::healthcheck;
+    let (router, _) = setup().await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    // A server listening on all interfaces is asked on loopback.
+    let all = std::net::SocketAddr::new([0, 0, 0, 0].into(), addr.port());
+    let probe = tokio::task::spawn_blocking(move || healthcheck::check(all, healthcheck::TIMEOUT));
+    assert_eq!(probe.await.unwrap(), Ok(()));
+
+    // A free port: bound and released at once, so nothing answers there.
+    let free = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let probe = tokio::task::spawn_blocking(move || healthcheck::check(free, healthcheck::TIMEOUT));
+    let err = probe.await.unwrap().unwrap_err();
+    assert!(err.starts_with(&format!("connect {free}")), "{err}");
+}
+
 #[tokio::test]
 async fn health_and_root() {
     let (router, _) = setup().await;

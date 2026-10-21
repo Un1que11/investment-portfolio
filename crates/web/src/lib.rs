@@ -22,6 +22,7 @@ pub mod base;
 pub mod chart;
 pub mod format;
 pub mod gold;
+pub mod healthcheck;
 pub mod ikze;
 pub mod import;
 pub mod overview;
