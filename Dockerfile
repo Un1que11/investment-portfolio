@@ -33,6 +33,28 @@ RUN cargo build --release --locked -p portfolio-web -p portfolio-sync \
     && install -D -m 0755 target/release/portfolio-web /out/portfolio-web \
     && install -D -m 0755 target/release/portfolio-sync /out/portfolio-sync
 
+# supercronic runs the daily sync inside the `sync` container (compose.yaml, BACKLOG P36): no cron
+# daemon, no root, logs to stdout. A pinned release, checked against the sha256 GitHub publishes
+# for each asset; TARGETARCH is set by BuildKit (amd64 or arm64).
+FROM debian:${DEBIAN_RELEASE}-slim AS supercronic
+ARG TARGETARCH
+ARG SUPERCRONIC_VERSION=v0.2.49
+ARG SUPERCRONIC_SHA256_AMD64=a53ae236602c7338aba3fbaff40bda6300eae3b9fedb8261eb06cfe3724430c1
+ARG SUPERCRONIC_SHA256_ARM64=02aa0cb229ba09050cba6638059dadb9eedc2276632ea43d6a57a2f8c1629dd5
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN set -eu; \
+    case "${TARGETARCH}" in \
+      amd64) sha="${SUPERCRONIC_SHA256_AMD64}" ;; \
+      arm64) sha="${SUPERCRONIC_SHA256_ARM64}" ;; \
+      *) echo "no supercronic checksum for TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /supercronic \
+      "https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-${TARGETARCH}"; \
+    echo "${sha}  /supercronic" | sha256sum -c -; \
+    chmod 0755 /supercronic
+
 FROM debian:${DEBIAN_RELEASE}-slim AS runtime
 # ca-certificates: HTTPS to NBP, Kraken, Alpha Vantage and Telegram.
 # tzdata: TZ=Europe/Warsaw, so "today" and the snapshot date match the Mac's.
@@ -49,6 +71,12 @@ RUN groupadd --system --gid 10001 portfolio \
     && install -d -m 0755 /config
 
 COPY --from=builder /out/portfolio-web /out/portfolio-sync /usr/local/bin/
+COPY --from=supercronic /supercronic /usr/local/bin/supercronic
+# The daily job for compose's `sync` service: 22:30 in TZ (Europe/Warsaw), like the launchd agent.
+# supercronic reads the schedule in the container's local time zone, which TZ sets.
+RUN install -d -m 0755 /etc/portfolio \
+    && printf '%s\n' '# portfolio-sync daily run, local time (TZ).' '30 22 * * * portfolio-sync' \
+       > /etc/portfolio/crontab
 
 # Inside a container the server has to listen on all interfaces to be reachable through a
 # published port; publish it on the host's loopback only (-p 127.0.0.1:3000:3000).
@@ -63,5 +91,6 @@ VOLUME ["/data"]
 EXPOSE 3000
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
-# `docker run … portfolio portfolio-sync --date YYYY-MM-DD` runs the sync instead.
+# `docker run … portfolio portfolio-sync --date YYYY-MM-DD` runs the sync instead, and
+# `… portfolio supercronic /etc/portfolio/crontab` runs it daily (compose.yaml does that).
 CMD ["portfolio-web"]

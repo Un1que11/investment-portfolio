@@ -411,6 +411,31 @@ Defaults inside the image: database `sqlite:///data/portfolio.db` (`PORTFOLIO_DB
 the `RUST_VERSION` build argument. `.github/workflows/docker.yml` builds the amd64 image and
 smoke-tests it on pull requests that touch what goes into it.
 
+### Docker Compose
+
+`compose.yaml` runs both from the same image: `web` (the dashboard, on `127.0.0.1:3000` only)
+and `sync` (supercronic in the container runs `portfolio-sync` daily at 22:30 Europe/Warsaw, no
+host cron). It reads keys from `.env`, mounts `config.toml` read-only and keeps the database on
+the named volume `portfolio-data`, the same one as the `docker run` commands above.
+
+```bash
+docker compose up -d --build                      # build and start both
+docker compose ps                                 # web shows (healthy) once /health answers
+docker compose run --rm sync --date 2026-10-20    # catch up a day the sync missed
+docker compose run --rm sync summary              # last month's summary, not sent
+docker compose logs -f sync
+docker compose down                               # stop; the volume and its data stay
+```
+
+Run either compose or the launchd agents (`deploy/launchd`), not both, so the sync runs once a
+day. Both containers have a read-only root filesystem (`/tmp` is a small tmpfs), drop every
+capability, cannot gain privileges, rotate their logs (3 × 10 MB) and are capped at 256 MB of
+memory; web is limited to one CPU and sync to half of one. The health check is
+`portfolio-web healthcheck`, which asks the running server's `/health` (the image has no curl).
+`sync` is on the `egress` network only; `web` is on `egress` too, because its pages fetch prices
+and a port can only be published from a network with outside access, and on the
+outside-less `internal` network.
+
 ## Checks
 
 These must all pass before a PR is opened:

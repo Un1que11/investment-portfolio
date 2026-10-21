@@ -6,7 +6,7 @@ use portfolio_core::config::Config;
 use portfolio_sources::alphavantage::AlphaVantageClient;
 use portfolio_sources::kraken::KrakenClient;
 use portfolio_sources::nbp::NbpClient;
-use portfolio_web::{AppState, Market, app};
+use portfolio_web::{AppState, Market, app, healthcheck};
 
 /// Loopback only: the dashboard is meant to be reachable from this machine alone.
 const DEFAULT_ADDR: &str = "127.0.0.1:3000";
@@ -21,6 +21,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr: SocketAddr = std::env::var("PORTFOLIO_ADDR")
         .unwrap_or_else(|_| DEFAULT_ADDR.to_owned())
         .parse()?;
+    // `portfolio-web healthcheck` asks the server already running on PORTFOLIO_ADDR instead of
+    // starting one (the container healthcheck; the image has no curl).
+    match std::env::args().nth(1).as_deref() {
+        None => {}
+        Some("healthcheck") => {
+            return healthcheck::check(addr, healthcheck::TIMEOUT).map_err(Into::into);
+        }
+        Some(other) => {
+            return Err(
+                format!("unknown argument {other:?}; usage: portfolio-web [healthcheck]").into(),
+            );
+        }
+    }
     let db_url = std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| DEFAULT_DB_URL.to_owned());
     let config_path =
         std::env::var("PORTFOLIO_CONFIG").unwrap_or_else(|_| DEFAULT_CONFIG.to_owned());
