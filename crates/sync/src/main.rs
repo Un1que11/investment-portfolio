@@ -78,10 +78,12 @@ fn read_config() -> Result<Config, Box<dyn std::error::Error>> {
     Ok(Config::from_toml(&text)?)
 }
 
+fn db_url() -> String {
+    std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned())
+}
+
 async fn open_db() -> Result<sqlx::SqlitePool, Box<dyn std::error::Error>> {
-    let db_url =
-        std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned());
-    Ok(portfolio_db::open(&db_url).await?)
+    Ok(portfolio_db::open(&db_url()).await?)
 }
 
 /// `portfolio-sync summary`: print the month's summary, or send it with `--send`.
@@ -108,7 +110,8 @@ async fn backup(
     options: BackupOptions,
     today: NaiveDate,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let pool = open_db().await?;
+    // Never creates or migrates the database: a missing one is an error, not an empty copy.
+    let pool = portfolio_sync::backup::open_source(&db_url()).await?;
     let path = portfolio_sync::backup::backup(&pool, &options, today).await?;
     println!("backup written: {}", path.display());
     Ok(())

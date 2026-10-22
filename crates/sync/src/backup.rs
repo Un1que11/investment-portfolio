@@ -9,9 +9,11 @@
 
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use chrono::NaiveDate;
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
 /// Default directory, relative to the working directory.
 pub const DEFAULT_DIR: &str = "backups";
@@ -77,8 +79,14 @@ pub fn backup_path(
 
 #[derive(Debug)]
 pub enum BackupError {
+    /// The database to back up is not there (a wrong working directory or `PORTFOLIO_DB_URL`).
+    NoDatabase(PathBuf),
+    Open(sqlx::Error),
     NoDir(PathBuf),
-    TooMany { dir: PathBuf, date: NaiveDate },
+    TooMany {
+        dir: PathBuf,
+        date: NaiveDate,
+    },
     NotUtf8(PathBuf),
     Copy(sqlx::Error),
     Permissions(PathBuf, std::io::Error),
@@ -87,6 +95,10 @@ pub enum BackupError {
 impl fmt::Display for BackupError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            BackupError::NoDatabase(p) => {
+                write!(f, "no database at {}; nothing to back up", p.display())
+            }
+            BackupError::Open(e) => write!(f, "cannot open the database: {e}"),
             BackupError::NoDir(d) => write!(f, "backup directory {} does not exist", d.display()),
             BackupError::TooMany { dir, date } => write!(
                 f,
@@ -103,6 +115,23 @@ impl fmt::Display for BackupError {
 }
 
 impl std::error::Error for BackupError {}
+
+/// Opens the database to back up at `url`. Unlike `portfolio_db::open`, it never creates the
+/// file and runs no migrations: a backup of a database that is not there would otherwise
+/// report success for a fresh, empty copy and leave a stray empty database behind.
+pub async fn open_source(url: &str) -> Result<SqlitePool, BackupError> {
+    let options = SqliteConnectOptions::from_str(url)
+        .map_err(BackupError::Open)?
+        .create_if_missing(false);
+    let file = options.get_filename();
+    if !file.is_file() {
+        return Err(BackupError::NoDatabase(file.to_owned()));
+    }
+    SqlitePoolOptions::new()
+        .connect_with(options)
+        .await
+        .map_err(BackupError::Open)
+}
 
 /// Writes a consistent copy of the database behind `pool` into `options.dir` and returns its
 /// path. The file is readable by its owner only, since it holds the whole portfolio.
@@ -259,6 +288,34 @@ mod tests {
             let mode = std::fs::metadata(&first).unwrap().permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
         }
+    }
+
+    #[tokio::test]
+    async fn missing_database_is_an_error_and_is_not_created() {
+        let tmp = TempDir::new("nodb");
+        let file = tmp.0.join("portfolio.db");
+        let err = open_source(&format!("sqlite://{}", file.display()))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, BackupError::NoDatabase(_)), "{err}");
+        assert!(!file.exists(), "a missing database must not be created");
+    }
+
+    #[tokio::test]
+    async fn open_source_reads_an_existing_database() {
+        let tmp = TempDir::new("open");
+        let url = format!("sqlite://{}", tmp.0.join("portfolio.db").display());
+        let pool = portfolio_db::open(&url).await.unwrap();
+        sqlx::query("CREATE TABLE backup_probe (v TEXT)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO backup_probe (v) VALUES ('a')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let source = open_source(&url).await.unwrap();
+        assert_eq!(count_rows(&source).await, 1);
     }
 
     #[tokio::test]

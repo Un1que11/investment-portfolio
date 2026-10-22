@@ -399,7 +399,8 @@ agents are stopped.
 the same day is `-2`, `-3`, …; nothing is overwritten), readable by its owner only. It uses
 SQLite's `VACUUM INTO`, so the copy is consistent while web and sync keep running. The backup
 service has no network and is never started by `up`. Outside Docker the same copy is
-`portfolio-sync backup [--out DIR]` (default `./backups`, which must exist). `backups/` is
+`portfolio-sync backup [--out DIR]` (default `./backups`, which must exist); it fails, rather
+than creating an empty database, when `PORTFOLIO_DB_URL` points at no file. `backups/` is
 git-ignored and kept out of the image.
 
 ### Image

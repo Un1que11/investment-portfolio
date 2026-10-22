@@ -31,7 +31,8 @@ summary prints a month's summary (default: last month) from the stored snapshots
 sending it; --send sends it to Telegram unless it was sent already.
 
 backup writes a consistent copy of the database to DIR (default: backups, which must exist) as
-portfolio-YYYY-MM-DD.db, numbered -2, -3, … when that day's copy is already there.
+portfolio-YYYY-MM-DD.db, numbered -2, -3, … when that day's copy is already there. It fails,
+rather than creating an empty database, when PORTFOLIO_DB_URL points at no file.
 
 Environment (or .env in the working directory): PORTFOLIO_DB_URL (default
 sqlite://portfolio.db), PORTFOLIO_CONFIG (default config.toml), ALPHAVANTAGE_API_KEY,
