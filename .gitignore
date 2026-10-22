@@ -4,3 +4,5 @@
 *.sqlite*
 exports/
 .DS_Store
+backups/
+.docker-mode

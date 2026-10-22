@@ -26,6 +26,9 @@ gold coins on `/gold`.
 
 Logs: `~/Library/Logs/portfolio-web.log` and `~/Library/Logs/portfolio-sync.log`.
 
+Or run it in Docker instead, with no Rust on the Mac: `./setup.sh --docker` (see
+[Docker](#docker)).
+
 ## Requirements
 
 - Rust stable (install via [rustup](https://rustup.rs)); the minimum supported version is set
@@ -370,6 +373,37 @@ month is sent once and a partial summary would keep the whole month's from going
 
 ## Docker
 
+### Easy start
+
+With Docker Desktop running:
+
+```bash
+./setup.sh --docker            # fill .env, build, start web + sync, wait for health, open it
+./setup.sh --docker status     # containers and health
+./setup.sh --docker logs       # follow both logs (e.g. ./setup.sh --docker logs sync)
+./setup.sh --docker down       # stop; the database stays on the portfolio-data volume
+docker compose run --rm backup # dated copy of the database in ./backups/
+```
+
+`./setup.sh --docker` fills `.env` the same way as the plain setup, builds the image, and only
+then switches over: it unloads and removes both launchd agents (so they do not come back at
+login), and when the `portfolio-data` volume has no database yet it offers to copy
+`./portfolio.db` into it, so the coins and imports come along. It then runs
+`docker compose up -d --wait` and opens the dashboard once `/health` answers. Running plain
+`./setup.sh` again switches back: it stops the containers (`docker compose down`) before
+installing the agents, so the daily sync never runs twice. The volume's database is not copied
+back to `./portfolio.db`; for that, make a backup and copy it over `portfolio.db` while the
+agents are stopped.
+
+`docker compose run --rm backup` writes `./backups/portfolio-YYYY-MM-DD.db` (a second copy on
+the same day is `-2`, `-3`, …; nothing is overwritten), readable by its owner only. It uses
+SQLite's `VACUUM INTO`, so the copy is consistent while web and sync keep running. The backup
+service has no network and is never started by `up`. Outside Docker the same copy is
+`portfolio-sync backup [--out DIR]` (default `./backups`, which must exist). `backups/` is
+git-ignored and kept out of the image.
+
+### Image
+
 An alternative to running the binaries directly. The image (`Dockerfile`) holds both
 `portfolio-web` and `portfolio-sync`, runs them as an unprivileged user (uid 10001) with
 `TZ=Europe/Warsaw`, and holds no secrets and no data: `.env`, databases, XTB exports and
@@ -424,11 +458,13 @@ docker compose ps                                 # web shows (healthy) once /he
 docker compose run --rm sync --date 2026-10-20    # catch up a day the sync missed
 docker compose run --rm sync summary              # last month's summary, not sent
 docker compose logs -f sync
+docker compose run --rm backup                    # dated copy of the database in ./backups/
 docker compose down                               # stop; the volume and its data stay
 ```
 
 Run either compose or the launchd agents (`deploy/launchd`), not both, so the sync runs once a
-day. Both containers have a read-only root filesystem (`/tmp` is a small tmpfs), drop every
+day (`./setup.sh --docker` and `./setup.sh` switch between them). Both containers have a
+read-only root filesystem (`/tmp` is a small tmpfs), drop every
 capability, cannot gain privileges, rotate their logs (3 × 10 MB) and are capped at 256 MB of
 memory; web is limited to one CPU and sync to half of one. The health check is
 `portfolio-web healthcheck`, which asks the running server's `/health` (the image has no curl).

@@ -3,6 +3,7 @@
 #   docker compose up -d --build                      # build, then start both services
 #   docker compose run --rm sync --date 2026-10-20    # catch up one day
 #   docker compose run --rm sync summary              # print last month's summary
+#   docker compose run --rm backup                    # dated copy of the database in ./backups/
 #   docker compose down                               # stop; the database volume stays
 #
 # Needs .env (keys, see .env.example) and config.toml next to this file. The database lives on
@@ -86,6 +87,25 @@ services:
     pids_limit: 64
     # NBP, Kraken, Alpha Vantage and Telegram; nothing talks to web.
     networks: [egress]
+
+  # One-off, never started by `up` (profile): `docker compose run --rm backup` writes a
+  # consistent copy of the database (SQLite VACUUM INTO, safe while web and sync are running)
+  # to ./backups/portfolio-YYYY-MM-DD.db on the host, numbered -2, -3, … for more copies on
+  # the same day. ./setup.sh --docker creates ./backups; Docker Desktop maps the files to the
+  # Mac user. It talks to nothing, so it has no network.
+  backup:
+    <<: *service
+    profiles: [tools]
+    entrypoint: ["/usr/bin/tini", "--", "portfolio-sync", "backup", "--out", "/backups"]
+    command: []
+    volumes:
+      - portfolio-data:/data
+      - ./backups:/backups
+    restart: "no"
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 32
+    network_mode: none
 
 volumes:
   portfolio-data:

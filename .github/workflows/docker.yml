@@ -126,5 +126,18 @@ jobs:
               *no-new-privileges*) ;; *) exit 1 ;;
             esac
           done
+          # The one-off backup (P37) writes a dated, owner-only copy into ./backups and never
+          # overwrites one. The runner's user is not the container's uid 10001, so the bind
+          # mount is opened up here; on a Mac Docker Desktop maps the files to the user.
+          mkdir -p backups && chmod 777 backups
+          docker compose run --rm backup
+          docker compose run --rm backup
+          day=$(TZ=Europe/Warsaw date +%F)
+          test -s "backups/portfolio-$day.db"
+          test -s "backups/portfolio-$day-2.db"
+          test "$(stat -c %a "backups/portfolio-$day.db")" = 600
+          # setup.sh --docker checks the volume for a database this way before offering a copy.
+          docker compose run --rm --no-deps -T -v "$PWD:/import:ro" --entrypoint /bin/sh web \
+            -c 'test -e /data/portfolio.db && test -e /import/compose.yaml'
           # Memory, CPU and PIDs at idle, for the limits in compose.yaml.
           docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}\t{{.PIDs}}'
