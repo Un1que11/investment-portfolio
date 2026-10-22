@@ -96,6 +96,8 @@ services:
   backup:
     <<: *service
     profiles: [tools]
+    # Needs no keys: keep the .env secrets out of a container that does not use them.
+    env_file: []
     entrypoint: ["/usr/bin/tini", "--", "portfolio-sync", "backup", "--out", "/backups"]
     command: []
     volumes:

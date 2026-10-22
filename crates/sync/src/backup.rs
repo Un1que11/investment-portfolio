@@ -89,7 +89,7 @@ pub enum BackupError {
     },
     NotUtf8(PathBuf),
     Copy(sqlx::Error),
-    Permissions(PathBuf, std::io::Error),
+    Create(PathBuf, std::io::Error),
 }
 
 impl fmt::Display for BackupError {
@@ -107,8 +107,8 @@ impl fmt::Display for BackupError {
             ),
             BackupError::NotUtf8(p) => write!(f, "backup path {} is not UTF-8", p.display()),
             BackupError::Copy(e) => write!(f, "cannot copy the database: {e}"),
-            BackupError::Permissions(p, e) => {
-                write!(f, "cannot make {} private: {e}", p.display())
+            BackupError::Create(p, e) => {
+                write!(f, "cannot create {}: {e}", p.display())
             }
         }
     }
@@ -147,25 +147,34 @@ pub async fn backup(
     let target = path
         .to_str()
         .ok_or_else(|| BackupError::NotUtf8(path.clone()))?;
-    sqlx::query("VACUUM INTO ?")
+    // Create the file empty and owner-only first (SQLite fills an empty file), so the copy is
+    // never readable by others, not even for a moment, and two backups at once cannot pick the
+    // same name.
+    reserve_private(&path)?;
+    if let Err(e) = sqlx::query("VACUUM INTO ?")
         .bind(target)
         .execute(pool)
         .await
-        .map_err(BackupError::Copy)?;
-    make_private(&path)?;
+    {
+        let _ = std::fs::remove_file(&path);
+        return Err(BackupError::Copy(e));
+    }
     Ok(path)
 }
 
-#[cfg(unix)]
-fn make_private(path: &Path) -> Result<(), BackupError> {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
-        .map_err(|e| BackupError::Permissions(path.to_owned(), e))
-}
-
-#[cfg(not(unix))]
-fn make_private(_path: &Path) -> Result<(), BackupError> {
-    Ok(())
+/// Creates `path` as a new, empty file readable by its owner only; fails if it exists.
+fn reserve_private(path: &Path) -> Result<(), BackupError> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+        .open(path)
+        .map(drop)
+        .map_err(|e| BackupError::Create(path.to_owned(), e))
 }
 
 #[cfg(test)]
