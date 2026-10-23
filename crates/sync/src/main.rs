@@ -7,7 +7,7 @@
 use std::process::ExitCode;
 use std::time::Duration;
 
-use chrono::{Local, Utc};
+use chrono::{Local, NaiveDate, Utc};
 use portfolio_core::config::Config;
 use portfolio_sources::alphavantage::AlphaVantageClient;
 use portfolio_sources::kraken::KrakenClient;
@@ -16,6 +16,7 @@ use portfolio_sources::kraken_private::{API_KEY_ENV, KrakenPrivateClient, PRIVAT
 use portfolio_sources::nbp::NbpClient;
 use portfolio_sources::prices::Clock;
 use portfolio_sources::valuation::{Sources, portfolio_on};
+use portfolio_sync::backup::BackupOptions;
 use portfolio_sync::summary::{
     SummaryOptions, deliver, month_summary, send_due_summary, summary_text,
 };
@@ -30,6 +31,15 @@ async fn main() -> ExitCode {
         Ok(Command::Run(o)) => o,
         Ok(Command::Summary(o)) => {
             return match summary(o).await {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        Ok(Command::Backup(o)) => {
+            return match backup(o, today).await {
                 Ok(()) => ExitCode::SUCCESS,
                 Err(e) => {
                     eprintln!("error: {e}");
@@ -68,10 +78,12 @@ fn read_config() -> Result<Config, Box<dyn std::error::Error>> {
     Ok(Config::from_toml(&text)?)
 }
 
+fn db_url() -> String {
+    std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned())
+}
+
 async fn open_db() -> Result<sqlx::SqlitePool, Box<dyn std::error::Error>> {
-    let db_url =
-        std::env::var("PORTFOLIO_DB_URL").unwrap_or_else(|_| "sqlite://portfolio.db".to_owned());
-    Ok(portfolio_db::open(&db_url).await?)
+    Ok(portfolio_db::open(&db_url()).await?)
 }
 
 /// `portfolio-sync summary`: print the month's summary, or send it with `--send`.
@@ -90,6 +102,18 @@ async fn summary(options: SummaryOptions) -> Result<(), Box<dyn std::error::Erro
         }
         None => println!("no snapshot in {}, nothing to show", options.month),
     }
+    Ok(())
+}
+
+/// `portfolio-sync backup`: a dated copy of the database. Prints only the file name.
+async fn backup(
+    options: BackupOptions,
+    today: NaiveDate,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Never creates or migrates the database: a missing one is an error, not an empty copy.
+    let pool = portfolio_sync::backup::open_source(&db_url()).await?;
+    let path = portfolio_sync::backup::backup(&pool, &options, today).await?;
+    println!("backup written: {}", path.display());
     Ok(())
 }
 

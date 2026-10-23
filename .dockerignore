@@ -15,6 +15,7 @@ target/
 *.sqlite*
 exports/
 backups/
+.docker-mode
 *.xlsx
 
 # config.toml is mounted at run time (/config/config.toml), so the image never carries a copy that

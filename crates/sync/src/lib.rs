@@ -5,6 +5,7 @@
 //! The pieces that do not need the network live here so they can be tested: argument parsing
 //! and turning a [`PortfolioReport`] into stored snapshot rows.
 
+pub mod backup;
 pub mod summary;
 pub mod telegram;
 
@@ -19,6 +20,7 @@ use sqlx::SqlitePool;
 pub const USAGE: &str = "\
 usage: portfolio-sync [--date YYYY-MM-DD] [--skip-kraken]
        portfolio-sync summary [--month YYYY-MM] [--send]
+       portfolio-sync backup [--out DIR]
 
 Syncs the Kraken ledger (read-only; skipped when KRAKEN_API_KEY and KRAKEN_PRIVATE_KEY are not
 set), values the portfolio on the date (default: today) and stores one snapshot row per asset,
@@ -27,6 +29,10 @@ the config, it then sends last month's summary to Telegram if that was not sent 
 
 summary prints a month's summary (default: last month) from the stored snapshots without
 sending it; --send sends it to Telegram unless it was sent already.
+
+backup writes a consistent copy of the database to DIR (default: backups, which must exist) as
+portfolio-YYYY-MM-DD.db, numbered -2, -3, … when that day's copy is already there. It fails,
+rather than creating an empty database, when PORTFOLIO_DB_URL points at no file.
 
 Environment (or .env in the working directory): PORTFOLIO_DB_URL (default
 sqlite://portfolio.db), PORTFOLIO_CONFIG (default config.toml), ALPHAVANTAGE_API_KEY,
@@ -44,6 +50,7 @@ pub struct Options {
 pub enum Command {
     Run(Options),
     Summary(summary::SummaryOptions),
+    Backup(backup::BackupOptions),
     Help,
 }
 
@@ -62,6 +69,10 @@ where
     if args.peek().is_some_and(|a| a.as_ref() == "summary") {
         args.next();
         return summary::parse_args(args, today).map(Command::Summary);
+    }
+    if args.peek().is_some_and(|a| a.as_ref() == "backup") {
+        args.next();
+        return backup::parse_args(args).map(Command::Backup);
     }
     while let Some(arg) = args.next() {
         match arg.as_ref() {
@@ -186,6 +197,17 @@ mod tests {
         );
         // Only as the first argument.
         assert!(parse_args(["--skip-kraken", "summary"], d("2026-10-19")).is_err());
+    }
+
+    #[test]
+    fn backup_is_a_subcommand() {
+        assert_eq!(
+            parse_args(["backup", "--out", "/backups"], d("2026-10-19")),
+            Ok(Command::Backup(backup::BackupOptions {
+                dir: "/backups".into()
+            }))
+        );
+        assert!(parse_args(["--skip-kraken", "backup"], d("2026-10-19")).is_err());
     }
 
     #[test]

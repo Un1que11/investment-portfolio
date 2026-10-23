@@ -56,7 +56,7 @@
   - Networks: `internal` (internal: true) for web ↔ volume-only traffic and `egress` for the outbound price sources and Telegram; web is on both only if it needs outbound calls, otherwise internal only.
   - Hardening: `read_only: true` root fs with a `tmpfs` /tmp, `cap_drop: [ALL]`, `security_opt: no-new-privileges`, json-file log rotation (`max-size`, `max-file`).
   Depends on P35.
-- [ ] P37. Easy start: `./setup.sh --docker` (checks Docker is running, fills `.env` the same way, `docker compose up -d --build`, waits for health, opens the dashboard) and `./setup.sh --docker status|logs|down`; switching to Docker unloads the launchd agents and switching back stops the containers, so the sync never runs twice. A one-off backup command for the volume (`docker compose run --rm backup` writing a dated copy of the database to `./backups/`). README section "Docker". Depends on P36.
+- [x] P37. Easy start: `./setup.sh --docker` (checks Docker is running, fills `.env` the same way, `docker compose up -d --build`, waits for health, opens the dashboard) and `./setup.sh --docker status|logs|down`; switching to Docker unloads the launchd agents and switching back stops the containers, so the sync never runs twice. A one-off backup command for the volume (`docker compose run --rm backup` writing a dated copy of the database to `./backups/`). README section "Docker". Depends on P36.
 
 ## Ideas (proposed by night job)
 - Top-up plan in buyable units: gold in whole 1/10 oz coins at the current coin price, with what is left over re-split between the other assets. Reason: P17's plan can say "gold 417 PLN" while a coin costs several times that, so its gold line cannot be bought as is.
