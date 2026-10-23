@@ -180,17 +180,29 @@ fn fee_row(
     })
 }
 
+/// What a refid group maps to.
+#[derive(Debug)]
+enum GroupOutcome {
+    /// Transactions to record.
+    Mapped(Vec<NewTransaction>),
+    /// A known internal move (a bundle dissolve) that is deliberately not recorded.
+    Ignored,
+}
+
 /// Maps one refid group. Returns None when the group is not a known pattern.
-fn map_group(entries: &[Entry]) -> Option<Result<Vec<NewTransaction>, ()>> {
+fn map_group(entries: &[Entry]) -> Option<GroupOutcome> {
     let kinds: Vec<&str> = entries.iter().map(|e| e.raw.kind.as_str()).collect();
 
-    // Internal bundle -> spot move: nets to zero per asset. Ok(empty) = recognised, ignored.
+    // Internal bundle -> spot move: nets to zero per asset.
     if kinds.iter().all(|k| *k == "bundletransfer") {
         let mut net: BTreeMap<&str, Decimal> = BTreeMap::new();
         for e in entries {
             *net.entry(e.raw.asset.as_str()).or_default() += e.amount;
         }
-        return net.values().all(|v| v.is_zero()).then_some(Err(()));
+        return net
+            .values()
+            .all(|v| v.is_zero())
+            .then_some(GroupOutcome::Ignored);
     }
 
     match entries {
@@ -208,7 +220,7 @@ fn map_group(entries: &[Entry]) -> Option<Result<Vec<NewTransaction>, ()>> {
                 note: Some(format!("Kraken deposit ({})", e.raw.asset)),
             }];
             rows.extend(fee_row(e, currency, None, "deposit"));
-            Some(Ok(rows))
+            Some(GroupOutcome::Mapped(rows))
         }
         [e] if e.raw.kind == "withdrawal" && e.amount < Decimal::ZERO => {
             let currency = fiat(&e.raw.asset)?;
@@ -224,7 +236,7 @@ fn map_group(entries: &[Entry]) -> Option<Result<Vec<NewTransaction>, ()>> {
                 note: Some(format!("Kraken withdrawal ({})", e.raw.asset)),
             }];
             rows.extend(fee_row(e, currency, None, "withdrawal"));
-            Some(Ok(rows))
+            Some(GroupOutcome::Mapped(rows))
         }
         [e] if e.raw.kind == "staking" && e.amount > Decimal::ZERO => {
             // A reward paid in the asset itself: recorded as income in kind (`dividend` with the
@@ -235,7 +247,7 @@ fn map_group(entries: &[Entry]) -> Option<Result<Vec<NewTransaction>, ()>> {
             if net <= Decimal::ZERO {
                 return None;
             }
-            Some(Ok(vec![NewTransaction {
+            Some(GroupOutcome::Mapped(vec![NewTransaction {
                 kind: "dividend",
                 executed_at: e.time,
                 asset: Some(asset.symbol),
@@ -292,7 +304,7 @@ fn map_group(entries: &[Entry]) -> Option<Result<Vec<NewTransaction>, ()>> {
                     ));
                 }
             }
-            Some(Ok(rows))
+            Some(GroupOutcome::Mapped(rows))
         }
         _ => None,
     }
@@ -316,8 +328,8 @@ pub fn map_entries(entries: &[RawLedgerEntry]) -> Result<Mapped, SyncError> {
                 .then(a.raw.ledger_id.cmp(&b.raw.ledger_id))
         });
         match map_group(&group) {
-            Some(Ok(rows)) => mapped.transactions.extend(rows),
-            Some(Err(())) => mapped.ignored.push(refid.to_owned()),
+            Some(GroupOutcome::Mapped(rows)) => mapped.transactions.extend(rows),
+            Some(GroupOutcome::Ignored) => mapped.ignored.push(refid.to_owned()),
             None => mapped.unsupported.push(Unsupported {
                 refid: refid.to_owned(),
                 entries: describe(&group),
