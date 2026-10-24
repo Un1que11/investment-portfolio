@@ -94,6 +94,50 @@ pub fn value_coin(
     }
 }
 
+/// What a coin cost over its gold content on the day it was bought.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PurchasePremium {
+    /// Melt value on the purchase day: NBP price per gram that day x fine weight.
+    pub melt_value_pln: Decimal,
+    /// Price paid minus that melt value; negative when the coin was bought below melt.
+    pub premium_pln: Decimal,
+    /// The premium as a share of the melt value (0.05 is 5% over melt).
+    pub premium_ratio: Decimal,
+}
+
+/// The premium paid for a coin: `price_paid_pln` against the melt value at the NBP price per
+/// gram on the purchase day. It explains why a coin starts with a loss before gold moves at all:
+/// what is paid over melt is the dealer's margin, not a market loss. Results are not rounded.
+pub fn purchase_premium(
+    price_paid_pln: Decimal,
+    price_per_gram_on_purchase_pln: Decimal,
+    fine_weight_grams: Decimal,
+) -> Result<PurchasePremium, GoldError> {
+    if price_paid_pln <= Decimal::ZERO {
+        return Err(GoldError::NonPositive("price paid", price_paid_pln));
+    }
+    if price_per_gram_on_purchase_pln <= Decimal::ZERO {
+        return Err(GoldError::NonPositive(
+            "gold price",
+            price_per_gram_on_purchase_pln,
+        ));
+    }
+    if fine_weight_grams <= Decimal::ZERO {
+        return Err(GoldError::NonPositive("coin weight", fine_weight_grams));
+    }
+    let melt = price_per_gram_on_purchase_pln
+        .checked_mul(fine_weight_grams)
+        .ok_or(GoldError::Overflow)?;
+    let premium = price_paid_pln
+        .checked_sub(melt)
+        .ok_or(GoldError::Overflow)?;
+    Ok(PurchasePremium {
+        melt_value_pln: melt,
+        premium_pln: premium,
+        premium_ratio: premium.checked_div(melt).ok_or(GoldError::Overflow)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +207,39 @@ mod tests {
         // With a dealer quote the melt value is still computed, so it fails the same way.
         assert_eq!(
             value_coin(dec!(400), huge, dec!(0.95), Some(dec!(1300))),
+            Err(GoldError::Overflow)
+        );
+    }
+
+    #[test]
+    fn premium_is_what_was_paid_over_melt_on_the_purchase_day() {
+        // NBP 400 PLN/g on the day: melt 400 * 3.11 = 1244. Paid 1306.20:
+        // premium 1306.20 - 1244 = 62.20, and 62.20 / 1244 = 0.05 (5% over melt).
+        let p = purchase_premium(dec!(1306.20), dec!(400), TENTH_OUNCE_GRAMS).unwrap();
+        assert_eq!(p.melt_value_pln, dec!(1244));
+        assert_eq!(p.premium_pln, dec!(62.20));
+        assert_eq!(p.premium_ratio, dec!(0.05));
+    }
+
+    #[test]
+    fn a_coin_bought_below_melt_has_a_negative_premium() {
+        // Melt 500 * 3.11 = 1555. Paid 1477.25: 1477.25 - 1555 = -77.75; -77.75 / 1555 = -0.05.
+        let p = purchase_premium(dec!(1477.25), dec!(500), dec!(3.11)).unwrap();
+        assert_eq!(p.premium_pln, dec!(-77.75));
+        assert_eq!(p.premium_ratio, dec!(-0.05));
+        // Paid exactly melt: no premium.
+        let p = purchase_premium(dec!(1555), dec!(500), dec!(3.11)).unwrap();
+        assert_eq!((p.premium_pln, p.premium_ratio), (dec!(0), dec!(0)));
+    }
+
+    #[test]
+    fn premium_rejects_invalid_inputs_and_overflow() {
+        assert!(purchase_premium(dec!(0), dec!(400), dec!(3.11)).is_err());
+        assert!(purchase_premium(dec!(1300), dec!(0), dec!(3.11)).is_err());
+        assert!(purchase_premium(dec!(1300), dec!(400), dec!(-3.11)).is_err());
+        let huge = Decimal::from_i128_with_scale(10_i128.pow(27), 0);
+        assert_eq!(
+            purchase_premium(dec!(1300), dec!(400), huge),
             Err(GoldError::Overflow)
         );
     }

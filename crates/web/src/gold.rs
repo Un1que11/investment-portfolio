@@ -5,6 +5,10 @@
 //! Each coin is valued as everywhere else: NBP price per gram x fine weight x the buyback factor,
 //! or its own dealer quote ([`portfolio_core::gold::value_coin`]). Without an NBP price the coins
 //! without a quote show "—" and the page still renders, and adding or removing coins works.
+//!
+//! Each coin also shows the premium paid at purchase (BACKLOG P34): the price paid against the
+//! melt value at the NBP price per gram on the purchase day, so the part of a coin's loss that is
+//! the dealer's margin is visible apart from gold's move.
 
 use std::str::FromStr;
 use std::sync::Arc;
@@ -17,11 +21,11 @@ use axum::{Extension, Form};
 use chrono::{Datelike, NaiveDate};
 use portfolio_core::AssetClass;
 use portfolio_core::config::Config;
-use portfolio_core::gold::{TENTH_OUNCE_GRAMS, ValuationBasis, value_coin};
+use portfolio_core::gold::{TENTH_OUNCE_GRAMS, ValuationBasis, purchase_premium, value_coin};
 use portfolio_core::price::PriceQuote;
 use portfolio_db::gold::{self as store, Coin, NewCoin};
 use portfolio_sources::gold::GOLD_GRAM;
-use portfolio_sources::prices::close_on_day;
+use portfolio_sources::prices::{PriceError, close_on_day};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -226,6 +230,42 @@ impl Pnl {
     }
 }
 
+/// The premium paid over melt at purchase: "+62,20 zł over melt · +5,0%".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Premium {
+    pub text: String,
+}
+
+impl Premium {
+    /// None when there is no NBP price for the purchase day or the inputs cannot give one.
+    pub fn for_coin(coin: &Coin, price_per_gram_on_purchase: Option<Decimal>) -> Option<Premium> {
+        let p = purchase_premium(
+            coin.purchase_price_pln,
+            price_per_gram_on_purchase?,
+            coin.fine_weight_g,
+        )
+        .ok()?;
+        Some(Premium::new(p.premium_pln, p.melt_value_pln))
+    }
+
+    fn new(premium: Decimal, melt: Decimal) -> Premium {
+        let percent = premium
+            .checked_div(melt)
+            .map_or("—".into(), format::signed_percent);
+        Premium {
+            text: format!(
+                "{} {} melt · {percent}",
+                format::signed_pln(premium),
+                if premium < Decimal::ZERO {
+                    "under"
+                } else {
+                    "over"
+                }
+            ),
+        }
+    }
+}
+
 /// A row of the coins table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoinRow {
@@ -242,10 +282,16 @@ pub struct CoinRow {
     /// Valued at its own dealer quote rather than the NBP price.
     pub quoted: bool,
     pub pnl: Option<Pnl>,
+    /// What was paid over melt on the purchase day; None without that day's NBP price.
+    pub premium: Option<Premium>,
 }
 
 impl CoinRow {
-    pub fn new(coin: &Coin, value: Option<(Decimal, ValuationBasis)>) -> CoinRow {
+    pub fn new(
+        coin: &Coin,
+        value: Option<(Decimal, ValuationBasis)>,
+        price_per_gram_on_purchase: Option<Decimal>,
+    ) -> CoinRow {
         let name = match &coin.label {
             Some(label) => label.clone(),
             None if coin.fine_weight_g == TENTH_OUNCE_GRAMS => "1/10 oz coin".into(),
@@ -266,6 +312,7 @@ impl CoinRow {
             value: value.map_or("—".into(), |(v, _)| format::pln(v)),
             quoted: value.is_some_and(|(_, b)| b == ValuationBasis::ManualQuote),
             pnl: value.map(|(v, _)| Pnl::new(v, coin.purchase_price_pln)),
+            premium: Premium::for_coin(coin, price_per_gram_on_purchase),
         }
     }
 
@@ -285,12 +332,25 @@ pub struct Summary {
     pub pnl: Option<Pnl>,
     /// "1 coin · 0,1 oz".
     pub holding: String,
+    /// The premium over melt paid for all coins together; None without coins or while any
+    /// coin's purchase-day price is missing.
+    pub premium: Option<Premium>,
 }
 
 impl Summary {
     /// A sum past `Decimal` (only rows stored before the form had caps can get there) shows "—".
-    pub fn new(coins: &[Coin], values: &[Option<(Decimal, ValuationBasis)>]) -> Summary {
+    /// `purchase_prices` is the NBP price per gram on each coin's purchase day.
+    pub fn new(
+        coins: &[Coin],
+        values: &[Option<(Decimal, ValuationBasis)>],
+        purchase_prices: &[Option<Decimal>],
+    ) -> Summary {
         let paid = checked_sum(coins.iter().map(|c| Some(c.purchase_price_pln)));
+        let melt_then = checked_sum(coins.iter().zip(purchase_prices).map(|(c, price)| {
+            purchase_premium(c.purchase_price_pln, (*price)?, c.fine_weight_g)
+                .ok()
+                .map(|p| p.melt_value_pln)
+        }));
         let value = checked_sum(values.iter().map(|v| v.map(|(v, _)| v)));
         let grams = checked_sum(coins.iter().map(|c| Some(c.fine_weight_g)));
         let count = coins.len();
@@ -310,6 +370,10 @@ impl Summary {
                     format::NBSP
                 ))
             ),
+            premium: melt_then
+                .zip(paid)
+                .filter(|_| count > 0)
+                .and_then(|(melt, paid)| Some(Premium::new(paid.checked_sub(melt)?, melt))),
         }
     }
 }
@@ -355,6 +419,7 @@ impl GoldPanel {
     pub fn new(
         coins: &[Coin],
         price_per_gram: Option<Decimal>,
+        purchase_prices: &[Option<Decimal>],
         buyback_factor: Decimal,
         form: CoinForm,
         errors: FieldErrors,
@@ -364,11 +429,12 @@ impl GoldPanel {
             .map(|c| coin_value(c, price_per_gram, buyback_factor))
             .collect();
         GoldPanel {
-            summary: Summary::new(coins, &values),
+            summary: Summary::new(coins, &values, purchase_prices),
             coins: coins
                 .iter()
                 .zip(&values)
-                .map(|(c, v)| CoinRow::new(c, *v))
+                .zip(purchase_prices)
+                .map(|((c, v), p)| CoinRow::new(c, *v, *p))
                 .collect(),
             form,
             errors,
@@ -392,8 +458,15 @@ pub struct GoldPage {
     pub panel: String,
 }
 
-/// The coins and today's NBP price per gram, when there is one.
-async fn load(state: &AppState) -> Result<(Vec<Coin>, Option<PriceQuote>), AppError> {
+/// What the page shows prices from: the coins, today's NBP price per gram when there is one,
+/// and the NBP price per gram on each coin's purchase day (None where NBP has none).
+struct Loaded {
+    coins: Vec<Coin>,
+    quote: Option<PriceQuote>,
+    purchase_prices: Vec<Option<Decimal>>,
+}
+
+async fn load(state: &AppState) -> Result<Loaded, AppError> {
     let coins = store::list_coins(&state.pool).await?;
     let clock = state.clock();
     let quote = match close_on_day(
@@ -411,19 +484,43 @@ async fn load(state: &AppState) -> Result<(Vec<Coin>, Option<PriceQuote>), AppEr
             None
         }
     };
-    Ok((coins, quote))
+    // One lookup per purchase day (cached in `prices` after the first), and none at all once the
+    // provider has failed on this load, so a down NBP costs one timeout, not one per coin.
+    let mut by_day: std::collections::BTreeMap<NaiveDate, Option<Decimal>> = Default::default();
+    let mut source_down = false;
+    for coin in &coins {
+        let day = coin.purchased_on;
+        if by_day.contains_key(&day) || source_down {
+            continue;
+        }
+        let price = match close_on_day(&state.pool, &state.market.nbp, &GOLD_GRAM, day, clock).await
+        {
+            Ok(q) => Some(q.close),
+            Err(e) => {
+                eprintln!("gold: purchase-day price for {day}: {e}");
+                // A day NBP has no price for (before its gold series) leaves the rest to try.
+                source_down = matches!(e, PriceError::Provider(_));
+                None
+            }
+        };
+        by_day.insert(day, price);
+    }
+    let purchase_prices = coins
+        .iter()
+        .map(|c| by_day.get(&c.purchased_on).copied().flatten())
+        .collect();
+    Ok(Loaded {
+        coins,
+        quote,
+        purchase_prices,
+    })
 }
 
-fn panel(
-    state: &AppState,
-    coins: &[Coin],
-    quote: Option<&PriceQuote>,
-    form: CoinForm,
-    errors: FieldErrors,
-) -> GoldPanel {
+fn panel(state: &AppState, loaded: &Loaded, form: CoinForm, errors: FieldErrors) -> GoldPanel {
     GoldPanel::new(
-        coins,
-        quote.map(|q| q.close),
+        &loaded.coins,
+        loaded.quote.as_ref().map(|q| q.close),
+        &loaded.purchase_prices,
         state.market.gold_buyback_factor,
         form,
         errors,
@@ -458,10 +555,10 @@ pub async fn show(
     Extension(config): Extension<Arc<Config>>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    let (coins, quote) = load(&state).await?;
+    let loaded = load(&state).await?;
     let form = CoinForm::empty((state.today)());
-    let p = panel(&state, &coins, quote.as_ref(), form, FieldErrors::default());
-    let page = page(&state, &headers, &config, quote.as_ref(), p).await?;
+    let p = panel(&state, &loaded, form, FieldErrors::default());
+    let page = page(&state, &headers, &config, loaded.quote.as_ref(), p).await?;
     Ok(render(&page)?.into_response())
 }
 
@@ -480,17 +577,17 @@ pub async fn add(
     if result.is_ok() && !is_htmx(&headers) {
         return Ok(Redirect::to("/gold").into_response());
     }
-    let (coins, quote) = load(&state).await?;
+    let loaded = load(&state).await?;
     let (form, errors) = match result {
         Ok(_) => (CoinForm::empty((state.today)()), FieldErrors::default()),
         Err(errors) => (form, errors),
     };
-    let p = panel(&state, &coins, quote.as_ref(), form, errors);
+    let p = panel(&state, &loaded, form, errors);
     if is_htmx(&headers) {
         // htmx only swaps 2xx responses, so validation errors are a 200 panel there.
         return Ok(render(&p)?.into_response());
     }
-    let page = page(&state, &headers, &config, quote.as_ref(), p).await?;
+    let page = page(&state, &headers, &config, loaded.quote.as_ref(), p).await?;
     Ok((StatusCode::UNPROCESSABLE_ENTITY, render(&page)?).into_response())
 }
 
@@ -505,9 +602,9 @@ pub async fn delete(
     if !is_htmx(&headers) {
         return Ok(Redirect::to("/gold").into_response());
     }
-    let (coins, quote) = load(&state).await?;
+    let loaded = load(&state).await?;
     let form = CoinForm::empty((state.today)());
-    let p = panel(&state, &coins, quote.as_ref(), form, FieldErrors::default());
+    let p = panel(&state, &loaded, form, FieldErrors::default());
     Ok(render(&p)?.into_response())
 }
 
@@ -571,6 +668,7 @@ mod tests {
         let gain = CoinRow::new(
             &coin(1, dec!(1100), dec!(3.11), None),
             Some((dec!(1181.80), ValuationBasis::NbpPrice)),
+            None,
         );
         assert_eq!(gain.name, "1/10 oz coin");
         assert_eq!(plain(&gain.weight), "0,1 oz · 3,11 g fine gold");
@@ -593,6 +691,7 @@ mod tests {
         let loss = CoinRow::new(
             &coin(2, dec!(1300), dec!(3.11), None),
             Some((dec!(1181.80), ValuationBasis::NbpPrice)),
+            None,
         );
         let p = loss.pnl.unwrap();
         assert_eq!(
@@ -602,14 +701,14 @@ mod tests {
 
         // Another weight is a "Gold coin"; without a value there is no P&L.
         let mut odd = coin(3, dec!(500), dec!(1.555), None);
-        let none = CoinRow::new(&odd, None);
+        let none = CoinRow::new(&odd, None, None);
         assert_eq!(
             (none.name.as_str(), none.value.as_str()),
             ("Gold coin", "—")
         );
         assert_eq!(none.pnl, None);
         odd.label = Some("Krugerrand".into());
-        assert_eq!(CoinRow::new(&odd, None).name, "Krugerrand");
+        assert_eq!(CoinRow::new(&odd, None, None).name, "Krugerrand");
     }
 
     #[test]
@@ -624,7 +723,7 @@ mod tests {
             .iter()
             .map(|c| coin_value(c, Some(dec!(400)), dec!(0.95)))
             .collect();
-        let s = Summary::new(&coins, &values);
+        let s = Summary::new(&coins, &values, &[None, None]);
         assert_eq!(plain(&s.value), "2 481,80 zł");
         assert_eq!(plain(&s.paid), "2 350,00 zł");
         let p = s.pnl.unwrap();
@@ -639,12 +738,12 @@ mod tests {
             .iter()
             .map(|c| coin_value(c, None, dec!(0.95)))
             .collect();
-        let s = Summary::new(&coins, &unpriced);
+        let s = Summary::new(&coins, &unpriced, &[None, None]);
         assert_eq!((s.value.as_str(), s.pnl), ("—", None));
         assert_eq!(plain(&s.paid), "2 350,00 zł");
 
         // No coins: nothing paid, nothing worth, no P&L.
-        let s = Summary::new(&[], &[]);
+        let s = Summary::new(&[], &[], &[]);
         assert_eq!(
             (plain(&s.value), plain(&s.paid), s.pnl, plain(&s.holding)),
             (
@@ -654,8 +753,58 @@ mod tests {
                 "0 coins · 0,0 oz".into()
             )
         );
-        let one = Summary::new(&coins[..1], &values[..1]);
+        let one = Summary::new(&coins[..1], &values[..1], &[None]);
         assert_eq!(plain(&one.holding), "1 coin · 0,1 oz");
+    }
+
+    #[test]
+    fn a_row_shows_the_premium_paid_over_melt_on_the_purchase_day() {
+        // NBP 400 zł/g on the purchase day: melt 400 x 3,11 = 1244. Paid 1306,20:
+        // 1306,20 - 1244 = +62,20, and 62,20 / 1244 = 5,0%.
+        let over = CoinRow::new(
+            &coin(1, dec!(1306.20), dec!(3.11), None),
+            None,
+            Some(dec!(400)),
+        );
+        assert_eq!(
+            plain(&over.premium.unwrap().text),
+            "+62,20 zł over melt · +5,0%"
+        );
+        // NBP 500 zł/g: melt 1555. Paid 1477,25: -77,75, -77,75 / 1555 = -5,0%.
+        let under = CoinRow::new(
+            &coin(2, dec!(1477.25), dec!(3.11), None),
+            None,
+            Some(dec!(500)),
+        );
+        assert_eq!(
+            plain(&under.premium.unwrap().text),
+            "-77,75 zł under melt · -5,0%"
+        );
+        // No NBP price for the purchase day: no premium, the rest of the row is unchanged.
+        let unknown = CoinRow::new(&coin(3, dec!(1300), dec!(3.11), None), None, None);
+        assert_eq!(unknown.premium, None);
+        assert_eq!(plain(&unknown.paid), "1 300,00 zł");
+    }
+
+    #[test]
+    fn the_summary_adds_the_premiums_up() {
+        // NBP 380 zł/g on both purchase days: melt 380 x 3,11 = 1181,80 each, 2363,60 together.
+        // Paid 1100 + 1250 = 2350: 2350 - 2363,60 = -13,60, and 13,60 / 2363,60 = 0,575% -> -0,6%.
+        let coins = [
+            coin(1, dec!(1100), dec!(3.11), None),
+            coin(2, dec!(1250), dec!(3.11), Some(dec!(1300))),
+        ];
+        let values = [None, None];
+        let s = Summary::new(&coins, &values, &[Some(dec!(380)), Some(dec!(380))]);
+        assert_eq!(
+            plain(&s.premium.unwrap().text),
+            "-13,60 zł under melt · -0,6%"
+        );
+        // One coin's purchase-day price is missing: no total.
+        let s = Summary::new(&coins, &values, &[Some(dec!(380)), None]);
+        assert_eq!(s.premium, None);
+        // No coins: no premium.
+        assert_eq!(Summary::new(&[], &[], &[]).premium, None);
     }
 
     #[test]

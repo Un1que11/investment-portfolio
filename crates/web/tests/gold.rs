@@ -171,6 +171,59 @@ async fn the_page_of_the_design() {
     assert!(!page.contains("aria-invalid"), "{page}");
 }
 
+/// NBP's gold at 380 PLN a gram on 12.06.2025, the coins' purchase day.
+async fn purchase_day_price(pool: &SqlitePool) {
+    let id = ensure_asset(
+        pool,
+        "XAU_G",
+        "Gold, PLN per gram (NBP)",
+        AssetClass::Gold,
+        "PLN",
+    )
+    .await
+    .unwrap();
+    let close = DailyClose {
+        date: d("2025-06-12"),
+        close: dec("380"),
+    };
+    upsert_closes(pool, id, "PLN", "nbp", &[close], Utc::now())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn each_coin_shows_the_premium_paid_over_melt() {
+    let pool = open_in_memory().await.unwrap();
+    coins(&pool).await;
+    gold_price(&pool).await;
+    purchase_day_price(&pool).await;
+    let page = send(&router(pool, config("")), get("/gold")).await;
+
+    // Melt on 12.06.2025: 380 x 3,11 = 1181,80 a coin. Paid 1100: -81,80, 81,80 / 1181,80 =
+    // 6,92% -> -6,9%. Paid 1250: +68,20, 68,20 / 1181,80 = 5,77% -> +5,8%.
+    // Together 2350 - 2363,60 = -13,60, 13,60 / 2363,60 = 0,58% -> -0,6%.
+    for text in [
+        "1 100,00 zł<div style=\"font-size: 12px; color: var(--text-3)\" title=\"Price paid against NBP melt value on the purchase day\">-81,80 zł under melt · -6,9%</div>",
+        ">+68,20 zł over melt · +5,8%</div>",
+        ">-13,60 zł under melt · -0,6% at purchase</div>",
+    ] {
+        assert!(page.contains(text), "{text}\n{page}");
+    }
+    // The valuation and P&L still use today's price: 1181,80 at 400 x 3,11 x 0,95.
+    assert!(page.contains("▲ +81,80 zł"), "{page}");
+}
+
+#[tokio::test]
+async fn without_a_purchase_day_price_there_is_no_premium() {
+    let pool = open_in_memory().await.unwrap();
+    coins(&pool).await;
+    gold_price(&pool).await;
+    // NBP is not listening: the purchase day cannot be fetched, the page still renders.
+    let page = send(&router(pool, config("")), get("/gold")).await;
+    assert!(!page.contains("melt ·"), "{page}");
+    assert!(page.contains(">2 481,80 zł<"), "{page}");
+}
+
 #[tokio::test]
 async fn without_an_nbp_price_only_quoted_coins_have_a_value() {
     let pool = open_in_memory().await.unwrap();
