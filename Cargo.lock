@@ -1530,6 +1530,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tower",
+ "wiremock",
 ]
 
 [[package]]

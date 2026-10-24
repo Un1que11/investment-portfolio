@@ -218,13 +218,7 @@ pub async fn close_on_day<S: DailySource>(
     )
     .await?;
 
-    if let Some(quote) = cache::quote_for_date(pool, asset_id, day).await? {
-        return Ok(quote);
-    }
-    if cache::has_close_after(pool, asset_id, day).await?
-        && let Some(quote) = cached_close(pool, asset_id, day).await?
-        && !gap_after(pool, asset_id, day, quote.date).await?
-    {
+    if let Some(quote) = answer_from_cache_only(pool, asset_id, day).await? {
         return Ok(quote);
     }
 
@@ -239,6 +233,43 @@ pub async fn close_on_day<S: DailySource>(
         return Ok(quote);
     }
     Err(PriceError::NoPrice(instrument.symbol, day))
+}
+
+/// What [`close_on_day`] answers without asking the provider: the stored close for exactly
+/// `day`, or an earlier one when a close after `day` is stored too and there is no gap between.
+async fn answer_from_cache_only(
+    pool: &SqlitePool,
+    asset_id: i64,
+    day: NaiveDate,
+) -> Result<Option<PriceQuote>, sqlx::Error> {
+    if let Some(quote) = cache::quote_for_date(pool, asset_id, day).await? {
+        return Ok(Some(quote));
+    }
+    if cache::has_close_after(pool, asset_id, day).await?
+        && let Some(quote) = cached_close(pool, asset_id, day).await?
+        && !gap_after(pool, asset_id, day, quote.date).await?
+    {
+        return Ok(Some(quote));
+    }
+    Ok(None)
+}
+
+/// The close [`close_on_day`] would answer for `day` from the cache alone, with no request to
+/// any provider: for when the provider is known to be down. None when only a fetch could tell.
+pub async fn cached_close_on_day(
+    pool: &SqlitePool,
+    instrument: &Instrument,
+    day: NaiveDate,
+) -> Result<Option<PriceQuote>, PriceError> {
+    let asset_id = cache::ensure_asset(
+        pool,
+        instrument.symbol,
+        instrument.name,
+        instrument.class,
+        instrument.currency,
+    )
+    .await?;
+    Ok(answer_from_cache_only(pool, asset_id, day).await?)
 }
 
 /// The stored close that answers `day`, unless the cache has a gap after it (see [`gap_after`]).

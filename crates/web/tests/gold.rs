@@ -21,6 +21,8 @@ use portfolio_web::{AppState, Market, app};
 use rust_decimal::Decimal;
 use sqlx::SqlitePool;
 use tower::ServiceExt;
+use wiremock::matchers::{method, path_regex};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const TODAY: &str = "2026-10-15";
 const DOWN: &str = "http://127.0.0.1:9";
@@ -96,8 +98,12 @@ async fn gold_price(pool: &SqlitePool) {
 }
 
 fn router(pool: SqlitePool, config: Config) -> Router {
+    router_with_nbp(pool, config, DOWN)
+}
+
+fn router_with_nbp(pool: SqlitePool, config: Config, nbp: &str) -> Router {
     let market = Market {
-        nbp: NbpClient::with_base_url(DOWN).unwrap(),
+        nbp: NbpClient::with_base_url(nbp).unwrap(),
         kraken: KrakenClient::with_base_url(DOWN).unwrap(),
         alphavantage: None,
         gold_buyback_factor: dec("0.95"),
@@ -186,7 +192,9 @@ async fn purchase_day_price(pool: &SqlitePool) {
         date: d("2025-06-12"),
         close: dec("380"),
     };
-    upsert_closes(pool, id, "PLN", "nbp", &[close], Utc::now())
+    // Fetched back then, so it does not count as a recent fetch of NBP's series.
+    let fetched_at = "2025-06-12T18:00:00Z".parse().unwrap();
+    upsert_closes(pool, id, "PLN", "nbp", &[close], fetched_at)
         .await
         .unwrap();
 }
@@ -222,6 +230,120 @@ async fn without_a_purchase_day_price_there_is_no_premium() {
     let page = send(&router(pool, config("")), get("/gold")).await;
     assert!(!page.contains("melt ·"), "{page}");
     assert!(page.contains(">2 481,80 zł<"), "{page}");
+}
+
+/// Adds a 1/10 oz coin paid `paid` on `day`.
+async fn coin_on(pool: &SqlitePool, day: &str, paid: &str) {
+    let coin = NewCoin {
+        label: None,
+        purchased_on: d(day),
+        purchase_price_pln: dec(paid),
+        fine_weight_g: dec("3.11"),
+        manual_quote_pln: None,
+    };
+    add_coin(pool, &coin).await.unwrap();
+}
+
+/// An NBP that fails every request, counting them.
+async fn failing_nbp() -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    server
+}
+
+async fn nbp_requests(server: &MockServer) -> usize {
+    server.received_requests().await.unwrap_or_default().len()
+}
+
+#[tokio::test]
+async fn after_nbp_fails_cached_purchase_days_still_show_their_premium() {
+    let pool = open_in_memory().await.unwrap();
+    // The oldest coin (10.01.2025) is on a day not in the cache, so it is looked up first; the
+    // two coins of 12.06.2025 (380 zł/g) are on a cached day.
+    coin_on(&pool, "2025-01-10", "1700").await;
+    coins(&pool).await;
+    gold_price(&pool).await;
+    purchase_day_price(&pool).await;
+    let nbp = failing_nbp().await;
+    let page = send(&router_with_nbp(pool, config(""), &nbp.uri()), get("/gold")).await;
+
+    // One failed request for 10.01.2025; 12.06.2025 is still answered from the cache:
+    // 1100 - 1181,80 = -81,80 (-6,9%), 1250 - 1181,80 = +68,20 (+5,8%).
+    assert_eq!(nbp_requests(&nbp).await, 1);
+    assert!(
+        page.contains(">-81,80 zł under melt · -6,9%</div>"),
+        "{page}"
+    );
+    assert!(
+        page.contains(">+68,20 zł over melt · +5,8%</div>"),
+        "{page}"
+    );
+    // The uncached coin has no premium, so there is no total.
+    assert!(!page.contains("at purchase</div>"), "{page}");
+}
+
+#[tokio::test]
+async fn when_todays_price_fails_purchase_days_are_not_asked_for() {
+    let pool = open_in_memory().await.unwrap();
+    coins(&pool).await;
+    coin_on(&pool, "2026-10-01", "1700").await;
+    purchase_day_price(&pool).await;
+    let nbp = failing_nbp().await;
+    let page = send(&router_with_nbp(pool, config(""), &nbp.uri()), get("/gold")).await;
+
+    // Today's lookup asks NBP and fails; 01.10.2026 is not asked for again, and 12.06.2025
+    // comes from the cache.
+    assert_eq!(nbp_requests(&nbp).await, 1);
+    assert!(page.contains("No NBP gold price right now"), "{page}");
+    assert!(
+        page.contains(">-81,80 zł under melt · -6,9%</div>"),
+        "{page}"
+    );
+}
+
+#[tokio::test]
+async fn a_weekend_purchase_uses_fridays_price_and_one_lookup_per_day() {
+    // Recorded NBP gold prices 15-31.12.2025: Friday 19.12 is 498,88 zł/g, Monday 22.12 is 500,23.
+    const XMAS_2025: &str =
+        include_str!("../../sources/tests/fixtures/nbp/gold_2025-12-15_2025-12-31.json");
+    let load = |paid: &'static [&'static str]| async move {
+        let pool = open_in_memory().await.unwrap();
+        for p in paid {
+            coin_on(&pool, "2025-12-20", p).await;
+        }
+        gold_price(&pool).await;
+        let nbp = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path_regex(
+                r"^/cenyzlota/\d{4}-\d{2}-\d{2}/\d{4}-\d{2}-\d{2}/$",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_string(XMAS_2025))
+            .mount(&nbp)
+            .await;
+        let page = send(&router_with_nbp(pool, config(""), &nbp.uri()), get("/gold")).await;
+        (page, nbp_requests(&nbp).await)
+    };
+
+    // Saturday 20.12.2025: melt 498,88 x 3,11 = 1551,5168. Paid 1630,00: +78,4832 -> +78,48 zł,
+    // 78,4832 / 1551,5168 = 5,058% -> +5,1%.
+    let (page, one_coin) = load(&["1630"]).await;
+    assert!(
+        page.contains(">+78,48 zł over melt · +5,1%</div>"),
+        "{page}"
+    );
+    assert_eq!(one_coin, 1);
+
+    // A second coin on the same day asks NBP no more than one coin does.
+    let (page, two_coins) = load(&["1630", "1500"]).await;
+    assert_eq!(two_coins, 1);
+    // 1500 - 1551,5168 = -51,5168 -> -51,52 zł; 51,5168 / 1551,5168 = 3,32% -> -3,3%.
+    assert!(
+        page.contains(">-51,52 zł under melt · -3,3%</div>"),
+        "{page}"
+    );
 }
 
 #[tokio::test]

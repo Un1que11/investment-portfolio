@@ -25,7 +25,7 @@ use portfolio_core::gold::{TENTH_OUNCE_GRAMS, ValuationBasis, purchase_premium, 
 use portfolio_core::price::PriceQuote;
 use portfolio_db::gold::{self as store, Coin, NewCoin};
 use portfolio_sources::gold::GOLD_GRAM;
-use portfolio_sources::prices::{PriceError, close_on_day};
+use portfolio_sources::prices::{PriceError, cached_close_on_day, close_on_day};
 use rust_decimal::Decimal;
 use serde::Deserialize;
 
@@ -469,6 +469,7 @@ struct Loaded {
 async fn load(state: &AppState) -> Result<Loaded, AppError> {
     let coins = store::list_coins(&state.pool).await?;
     let clock = state.clock();
+    let mut source_down = false;
     let quote = match close_on_day(
         &state.pool,
         &state.market.nbp,
@@ -481,26 +482,36 @@ async fn load(state: &AppState) -> Result<Loaded, AppError> {
         Ok(q) => Some(q),
         Err(e) => {
             eprintln!("gold: {e}");
+            source_down = matches!(e, PriceError::Provider(_));
             None
         }
     };
-    // One lookup per purchase day (cached in `prices` after the first), and none at all once the
-    // provider has failed on this load, so a down NBP costs one timeout, not one per coin.
+    // One lookup per purchase day (cached in `prices` after the first). Once NBP has failed on
+    // this load, the remaining days are answered from the cache only, so a down NBP costs one
+    // failed request per load, not one per coin, and premiums already known still show.
     let mut by_day: std::collections::BTreeMap<NaiveDate, Option<Decimal>> = Default::default();
-    let mut source_down = false;
     for coin in &coins {
         let day = coin.purchased_on;
-        if by_day.contains_key(&day) || source_down {
+        if by_day.contains_key(&day) {
             continue;
         }
-        let price = match close_on_day(&state.pool, &state.market.nbp, &GOLD_GRAM, day, clock).await
-        {
-            Ok(q) => Some(q.close),
-            Err(e) => {
-                eprintln!("gold: purchase-day price for {day}: {e}");
-                // A day NBP has no price for (before its gold series) leaves the rest to try.
-                source_down = matches!(e, PriceError::Provider(_));
-                None
+        let price = if source_down {
+            match cached_close_on_day(&state.pool, &GOLD_GRAM, day).await {
+                Ok(q) => q.map(|q| q.close),
+                Err(e) => {
+                    eprintln!("gold: cached purchase-day price for {day}: {e}");
+                    None
+                }
+            }
+        } else {
+            match close_on_day(&state.pool, &state.market.nbp, &GOLD_GRAM, day, clock).await {
+                Ok(q) => Some(q.close),
+                Err(e) => {
+                    eprintln!("gold: purchase-day price for {day}: {e}");
+                    // A day NBP has no price for (before its gold series) leaves the rest to try.
+                    source_down = matches!(e, PriceError::Provider(_));
+                    None
+                }
             }
         };
         by_day.insert(day, price);
