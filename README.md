@@ -4,6 +4,14 @@ A personal investment dashboard. It runs locally on macOS and shows the whole po
 invested vs current value, P&L, XIRR, each asset's contribution, and drift from the target
 allocation. See `CLAUDE.md` for the full spec and `BACKLOG.md` for the roadmap.
 
+Rust workspace (Axum, askama + htmx, SQLite via sqlx), exact decimal maths with
+`rust_decimal`, server-rendered SVG charts, light and dark themes. Screenshots below are rendered
+from anonymised demo fixtures, not real amounts.
+
+| Desktop, light | Phone, dark |
+|---|---|
+| ![Overview: total value, XIRR, value vs contributions chart and per-asset ranking](docs/screenshots/p21-overview-assets-light.png) | <img src="docs/screenshots/p21-overview-assets-dark-phone.png" alt="Overview on a phone, dark theme" width="260"> |
+
 ## Quick start (macOS)
 
 ```bash
