@@ -214,7 +214,9 @@ guessed.
 ## Configuration
 
 Settings live in `config.toml` at the repository root (another file can be named with
-`PORTFOLIO_CONFIG`), parsed and validated by `portfolio_core::config::Config`:
+`PORTFOLIO_CONFIG`), parsed and validated by `portfolio_core::config::Config`. The committed
+`config.toml` holds example values that the tests check. To keep your own settings out of git,
+copy it to `config.local.toml` (ignored) and add `PORTFOLIO_CONFIG=config.local.toml` to `.env`:
 
 - `[targets]`: target allocation in percent (`vwce`, `crypto`, `gold`), adding up to exactly 100;
   `[targets.crypto_split]` splits the crypto share between `btc` and `eth`, also adding up to 100.
