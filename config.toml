@@ -1,4 +1,5 @@
-# Portfolio settings. Read by `portfolio_core::config::Config`; see README ("Configuration").
+# Example portfolio settings. Read by `portfolio_core::config::Config`; see README ("Configuration").
+# Keep your own in config.local.toml (ignored by git) and set PORTFOLIO_CONFIG=config.local.toml in .env.
 #
 # Numbers are exact decimals: write whole numbers bare (55) and fractions as strings ("0.95").
 # TOML floats such as 0.95 are rejected, because they would pass through binary floating point.

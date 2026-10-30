@@ -6,3 +6,4 @@ exports/
 .DS_Store
 backups/
 .docker-mode
+config.local.toml
